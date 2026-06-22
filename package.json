@@ -1,0 +1,33 @@
+{
+  "name": "apexvision-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ApexVision AI - Plataforma de análisis de rendimiento F1 en tiempo real con IA Generativa sobre AWS",
+  "workspaces": [
+    "infrastructure",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:property": "turbo run test:property",
+    "synth": "turbo run synth --filter=infrastructure",
+    "deploy:dev": "turbo run deploy --filter=infrastructure -- --context env=dev",
+    "deploy:staging": "turbo run deploy --filter=infrastructure -- --context env=staging",
+    "deploy:prod": "turbo run deploy --filter=infrastructure -- --context env=prod"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dborra-83/apexvision-ai.git"
+  },
+  "license": "MIT"
+}

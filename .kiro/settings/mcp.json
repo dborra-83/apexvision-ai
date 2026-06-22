@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "cloudhesive": {
+      "url": "https://l4f8l06326.execute-api.us-east-1.amazonaws.com/mcp",
+      "headers": {
+        "x-api-key": "chmcp_a47b428f091fca633aa92bf029844b2678a32d8c785c6ad0"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "list_components",
+        "get_tokens",
+        "get_component"
+      ]
+    }
+  }
+}

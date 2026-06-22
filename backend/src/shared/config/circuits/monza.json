@@ -1,0 +1,24 @@
+{
+  "circuitoId": "monza",
+  "nombre": "Autodromo Nazionale Monza",
+  "longitudMetros": 5793,
+  "sectores": [
+    { "sectorId": "s1", "nombre": "Sector 1 - Variante del Rettifilo", "tipo": "curva_rapida", "puntoInicio": { "x": 0, "y": 0 }, "puntoFin": { "x": 500, "y": 100 } },
+    { "sectorId": "s2", "nombre": "Sector 2 - Curva Grande / Lesmos", "tipo": "curva_lenta", "puntoInicio": { "x": 500, "y": 100 }, "puntoFin": { "x": 1200, "y": 400 } },
+    { "sectorId": "s3", "nombre": "Sector 3 - Recta Principal", "tipo": "recta", "puntoInicio": { "x": 1200, "y": 400 }, "puntoFin": { "x": 1800, "y": 0 } }
+  ],
+  "lineaOptima": [
+    { "x": 0, "y": 5 }, { "x": 100, "y": 4 }, { "x": 200, "y": 2 }, { "x": 300, "y": 1 },
+    { "x": 400, "y": 3 }, { "x": 500, "y": 6 }, { "x": 600, "y": 8 }, { "x": 700, "y": 7 },
+    { "x": 800, "y": 5 }, { "x": 900, "y": 3 }, { "x": 1000, "y": 2 }, { "x": 1100, "y": 4 },
+    { "x": 1200, "y": 6 }, { "x": 1300, "y": 5 }, { "x": 1400, "y": 3 }, { "x": 1500, "y": 2 },
+    { "x": 1600, "y": 3 }, { "x": 1700, "y": 4 }, { "x": 1800, "y": 5 }
+  ],
+  "rangosValidos": {
+    "velocidadAparente": { "min": 0, "max": 370 },
+    "posicionLineaCarrera": { "min": -15, "max": 15 },
+    "intensidadFrenado": { "min": 0, "max": 100 },
+    "anguloDirection": { "min": -180, "max": 180 },
+    "desgasteNeumaticos": { "min": 0, "max": 100 }
+  }
+}

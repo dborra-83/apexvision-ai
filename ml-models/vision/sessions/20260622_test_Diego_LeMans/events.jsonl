@@ -1,0 +1,10 @@
+{"type": "off_track", "timestamp": 1719090100, "message": "Off track @ 23% lap 1", "lap": 1, "trackPct": 23, "speed": 245.3}
+{"type": "off_track", "timestamp": 1719090200, "message": "Off track @ 67% lap 1", "lap": 1, "trackPct": 67, "speed": 198.7}
+{"type": "ai_recommendation", "timestamp": 1719090300, "message": "🤖 🔄 SOBREVIRAJE: suavizar entradas, reducir acelerador en salida de curva.", "lap": 2, "trackPct": 45}
+{"type": "off_track", "timestamp": 1719090400, "message": "Off track @ 23% lap 2", "lap": 2, "trackPct": 23, "speed": 251.0}
+{"type": "ai_recommendation", "timestamp": 1719090500, "message": "🤖 ⚠️ 2x Fuera de Pista @ 23% — frenar antes en esa zona", "lap": 3, "trackPct": 23}
+{"type": "best_lap", "timestamp": 1719090600, "message": "New best: 3:49.876 (L3)", "lap": 3, "trackPct": 0}
+{"type": "ai_recommendation", "timestamp": 1719090700, "message": "🤖 🛞 Desgaste 45% — considerar pit en próxima vuelta", "lap": 4, "trackPct": 50}
+{"type": "off_track", "timestamp": 1719090800, "message": "Off track @ 82% lap 4", "lap": 4, "trackPct": 82, "speed": 175.2}
+{"type": "best_lap", "timestamp": 1719090900, "message": "New best: 3:48.912 (L5)", "lap": 5, "trackPct": 0}
+{"type": "ai_recommendation", "timestamp": 1719091000, "message": "🤖 📊 Consistencia mejorando. Mantener ritmo actual.", "lap": 5, "trackPct": 100}

@@ -1,0 +1,56 @@
+name: Deploy to Dev
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npx vitest run --config backend/vitest.config.ts
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
+          aws-region: us-east-1
+
+      - name: CDK Diff
+        working-directory: infrastructure
+        run: npx cdk diff --context env=dev || true
+
+      - name: CDK Deploy
+        working-directory: infrastructure
+        run: npx cdk deploy --all --context env=dev --require-approval never
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Deploy Frontend to S3
+        run: |
+          aws s3 sync frontend/dist s3://apexvision-dev-dashboard-${{ secrets.AWS_ACCOUNT_ID }} --delete
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DIST_ID_DEV }} --paths "/*" || true
