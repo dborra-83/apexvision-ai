@@ -1,0 +1,23 @@
+{
+  "name": "@apexvision/infrastructure",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint . --ext .ts",
+    "test": "vitest run",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --all",
+    "diff": "cdk diff"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "aws-cdk-lib": "^2.150.0",
+    "cdk-nag": "^2.28.0",
+    "constructs": "^10.3.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "aws-cdk": "^2.150.0"
+  }
+}

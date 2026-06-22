@@ -1,0 +1,4 @@
+# Dependencias para el servidor de telemetría iRacing
+# Instalar en tu PC de gaming: pip install -r requirements-iracing.txt
+pyirsdk>=1.3.0
+websockets>=12.0

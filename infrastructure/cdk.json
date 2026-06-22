@@ -1,0 +1,39 @@
+{
+  "app": "npx ts-node --prefer-ts-exts bin/apexvision.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "**/*.d.ts",
+      "**/*.js",
+      "tsconfig.json",
+      "package*.json",
+      "node_modules",
+      "test"
+    ]
+  },
+  "context": {
+    "environments": {
+      "dev": {
+        "account": "520754296204",
+        "region": "us-east-1",
+        "prefix": "dev"
+      },
+      "staging": {
+        "account": "520754296204",
+        "region": "us-east-1",
+        "prefix": "staging"
+      },
+      "prod": {
+        "account": "520754296204",
+        "region": "us-east-1",
+        "prefix": "prod"
+      }
+    },
+    "projectName": "apexvision",
+    "maxPilotos": 20,
+    "frameRate": 30,
+    "timestreamRetentionDays": 365
+  }
+}

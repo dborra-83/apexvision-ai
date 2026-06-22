@@ -1,0 +1,27 @@
+{
+  "globalDependencies": ["**/.env.*local"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "cdk.out/**", "build/**"]
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:property": {
+      "dependsOn": ["build"],
+      "outputs": ["coverage/**"]
+    },
+    "synth": {
+      "dependsOn": ["build"],
+      "outputs": ["cdk.out/**"]
+    },
+    "deploy": {
+      "dependsOn": ["build", "test", "lint"]
+    }
+  }
+}
