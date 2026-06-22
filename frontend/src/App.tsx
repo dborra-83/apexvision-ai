@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Authenticator } from '@aws-amplify/ui-react';
-import { Dashboard } from './pages/Dashboard';
-import { Comparison } from './pages/Comparison';
+import { Home } from './pages/Home';
 import { Live } from './pages/Live';
 import { Login } from './pages/Login';
 import { Analysis } from './pages/Analysis';
@@ -12,28 +11,13 @@ function App() {
     <Authenticator.Provider>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
           <Route
             path="/live"
             element={
               <ProtectedRoute>
                 <Live />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/comparison"
-            element={
-              <ProtectedRoute>
-                <Comparison />
               </ProtectedRoute>
             }
           />
@@ -45,7 +29,10 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {/* Redirect old routes */}
+          <Route path="/dashboard" element={<Navigate to="/" replace />} />
+          <Route path="/comparison" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </Authenticator.Provider>
