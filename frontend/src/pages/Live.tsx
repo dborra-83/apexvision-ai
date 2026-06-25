@@ -6,6 +6,7 @@
  */
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { fmtLapTime } from '../utils/format';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useIRacingLive } from '../hooks/useIRacingLive';
@@ -14,13 +15,14 @@ import { useThemeStore } from '../store/theme-store';
 import { useSessionLogStore, SessionEvent } from '../store/session-log-store';
 import { liveTranslations, LiveT } from './live-i18n';
 import { playAlertSound, unlockAudio } from '../utils/sound-alerts';
+import { speakRecommendation } from '../utils/tts';
 import { findTrackInfo } from '../data/track-info';
 import { TrackMapLinear, SectorTimes, InputTrace, InputSample, SectorTime } from '../components/LiveTelemetryPanels';
-import { IconDriver, IconCar, IconTrack, IconFuel, IconEngine, IconTire, IconWeather, IconGForce, IconAI, IconClock, IconSpeed, IconLog, IconInfo } from '../components/RacingIcons';
+import { IconDriver, IconCar, IconTrack, IconFuel, IconEngine, IconTire, IconWeather, IconGForce, IconAI, IconClock, IconLog, IconInfo } from '../components/RacingIcons';
 import '../racing.css';
 
 // --- Helpers ---
-const fmt = (t: number) => t > 0 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, '0')}` : '--:--.---';
+const fmt = fmtLapTime;
 
 function useLiveT(): LiveT {
   const lang = useLangStore((s) => s.lang);
@@ -35,8 +37,22 @@ interface AIRecommendation {
   priority: number;
 }
 
-function generateRecommendations(d: Record<string, unknown>, t: LiveT, sessionEvents: SessionEvent[]): AIRecommendation[] {
+interface StintHistory {
+  lapTimes: number[];
+  tireWear: { lap: number; lf: number; rf: number; lr: number; rr: number }[];
+  fuelPerLap: number[];
+  fuelLevels: number[];
+}
+
+function generateRecommendations(
+  d: Record<string, unknown>,
+  t: LiveT,
+  sessionEvents: SessionEvent[],
+  history: StintHistory,
+  lang: string,
+): AIRecommendation[] {
   const recs: AIRecommendation[] = [];
+  const es = lang === 'es';
   const fuelPct = (d.fuelPercent as number) || 0;
   const lap = (d.lap as number) || 0;
   const fuelPerLap = lap > 1 ? (100 - fuelPct) / (lap - 1) : 0;
@@ -53,80 +69,247 @@ function generateRecommendations(d: Record<string, unknown>, t: LiveT, sessionEv
   const windSpeed = (d.windSpeed as number) || 0;
   const oilTemp = (d.oilTemp as number) || 0;
   const waterTemp = (d.waterTemp as number) || 0;
+  const rpm = (d.rpm as number) || 0;
+  const gear = (d.gear as number) || 0;
+  const throttle = (d.throttle as number) || 0;
+  const speed = (d.speed as number) || 0;
+  const flags = (d.flags as string[]) || [];
 
-  // Track off patterns - find repeated off-tracks at same position
+  const slShiftRPM = (d.slShiftRPM as number) || 0;
+  const slBlinkRPM = (d.slBlinkRPM as number) || 0;
+  const drsStatus = (d.drsStatus as number) || 0;
+  const pitRepairLeft = (d.pitRepairLeft as number) || 0;
+  const brakeBias = (d.brakeBias as number) || 0;
+  const tireLF_temp = (d.tireLF_temp as number) || 0;
+  const tireRF_temp = (d.tireRF_temp as number) || 0;
+  const tireLR_temp = (d.tireLR_temp as number) || 0;
+  const tireRR_temp = (d.tireRR_temp as number) || 0;
+
   const recentOffs = sessionEvents.filter((e) => e.type === 'off_track').slice(-10);
   const trackPctClusters = new Map<number, number>();
   recentOffs.forEach((e) => {
-    const zone = Math.round(e.trackPct / 5) * 5; // group by 5% zones
+    const zone = Math.round(e.trackPct / 5) * 5;
     trackPctClusters.set(zone, (trackPctClusters.get(zone) || 0) + 1);
   });
 
-  // Fuel
+  // ── BANDERAS / FLAGS ──
+  if (flags.includes('yellow')) {
+    recs.push({ id: 'flag-y', type: 'warning', priority: 1, message: es
+      ? '🟡 Bandera amarilla — levantar el pie, sin adelantamientos, atención a autos lentos'
+      : '🟡 Yellow flag — lift, no overtaking, watch for slow cars' });
+  }
+  if (flags.includes('blue')) {
+    recs.push({ id: 'flag-b', type: 'warning', priority: 1, message: es
+      ? '🔵 Bandera azul — ceder el paso inmediatamente'
+      : '🔵 Blue flag — let the faster car past immediately' });
+  }
+  if (flags.includes('checkered')) {
+    recs.push({ id: 'flag-c', type: 'strategy', priority: 1, message: es
+      ? '🏁 Bandera a cuadros — vuelta de enfriamiento, proteger el auto hasta los pits'
+      : '🏁 Checkered — cool-down lap, protect the car to pits' });
+  }
+
+  // ── DAÑO / DAMAGE ──
+  if (pitRepairLeft > 0) {
+    recs.push({ id: 'damage', type: 'warning', priority: 2, message: es
+      ? `🔧 ${pitRepairLeft.toFixed(0)}s de reparación pendientes — evaluar ventana de pit`
+      : `🔧 ${pitRepairLeft.toFixed(0)}s damage repair pending — evaluate pit window` });
+  }
+
+  // ── COMBUSTIBLE / FUEL ──
   if (fuelLaps <= 2 && fuelLaps > 0) {
-    recs.push({ id: 'fuel-crit', type: 'warning', priority: 1, message: `⛽ ${t.fuel}: ${fuelLaps} ${t.lapsLeft}. PIT NOW!` });
+    recs.push({ id: 'fuel-crit', type: 'warning', priority: 1, message: es
+      ? `⛽ ${t.fuel}: ${fuelLaps} ${t.lapsLeft} — ENTRAR A PITS AHORA`
+      : `⛽ ${t.fuel}: ${fuelLaps} ${t.lapsLeft} — PIT NOW!` });
   } else if (fuelLaps <= 5) {
     recs.push({ id: 'fuel-low', type: 'strategy', priority: 2, message: `⛽ ${t.fuel}: ~${fuelLaps} ${t.lapsLeft}` });
   }
 
-  // Tires
+  // ── NEUMÁTICOS — desgaste / TIRES — wear ──
   if (maxWear > 80) {
-    recs.push({ id: 'tire-crit', type: 'warning', priority: 1, message: `🛞 ${t.wear} ${maxWear.toFixed(0)}% — grip loss imminent` });
+    recs.push({ id: 'tire-crit', type: 'warning', priority: 1, message: es
+      ? `🛞 Desgaste ${maxWear.toFixed(0)}% — pérdida de grip inminente, entrar a pits`
+      : `🛞 Wear ${maxWear.toFixed(0)}% — grip loss imminent, pit now` });
   } else if (maxWear > 55) {
-    recs.push({ id: 'tire-high', type: 'strategy', priority: 3, message: `🛞 ${t.wear} ${maxWear.toFixed(0)}% — consider pit` });
+    recs.push({ id: 'tire-high', type: 'strategy', priority: 3, message: es
+      ? `🛞 Desgaste ${maxWear.toFixed(0)}% — ventana de pit se acerca`
+      : `🛞 Wear ${maxWear.toFixed(0)}% — pit window approaching` });
   }
 
-  // Handling
+  // ── TEMPERATURA DE NEUMÁTICOS / TIRE TEMP ──
+  const tireTemps = [tireLF_temp, tireRF_temp, tireLR_temp, tireRR_temp].filter((x) => x > 0);
+  const avgTireTemp = tireTemps.length ? tireTemps.reduce((a, b) => a + b, 0) / tireTemps.length : 0;
+  if (avgTireTemp > 0 && avgTireTemp < 65 && speed > 60) {
+    recs.push({ id: 'tire-cold', type: 'tip', priority: 4, message: es
+      ? `🥶 Neumáticos fríos (${avgTireTemp.toFixed(0)}°C) — forzar más para generar temperatura`
+      : `🥶 Cold tires (${avgTireTemp.toFixed(0)}°C) — push harder to build heat` });
+  }
+  if (tireLF_temp > 110 || tireRF_temp > 110) {
+    const hotTire = tireLF_temp > tireRF_temp ? (es ? 'DI' : 'LF') : (es ? 'DD' : 'RF');
+    const hotTemp = Math.max(tireLF_temp, tireRF_temp);
+    recs.push({ id: 'tire-hot', type: 'warning', priority: 3, message: es
+      ? `🌡 Neumático ${hotTire} recalentado: ${hotTemp.toFixed(0)}°C — reducir agresividad en curvas lentas`
+      : `🌡 ${hotTire} overheating: ${hotTemp.toFixed(0)}°C — reduce aggression in slow corners` });
+  }
+
+  // ── DIFERENCIAL TÉRMICO / TEMP SPREAD ──
+  const lfSpread = Math.abs(((d.tireLF_inner as number) || 0) - ((d.tireLF_outer as number) || 0));
+  const rfSpread = Math.abs(((d.tireRF_inner as number) || 0) - ((d.tireRF_outer as number) || 0));
+  const maxSpread = Math.max(lfSpread, rfSpread);
+  if (maxSpread > 25) {
+    const tire = lfSpread > rfSpread ? (es ? 'DI' : 'LF') : (es ? 'DD' : 'RF');
+    recs.push({ id: 'tire-spread', type: 'tip', priority: 4, message: es
+      ? `🔧 Diferencia térmica ${tire}: ${maxSpread.toFixed(0)}°C — verificar presión o camber`
+      : `🔧 ${tire} temp spread ${maxSpread.toFixed(0)}°C — check tire pressure or camber` });
+  }
+
+  // ── RITMO DE DESGASTE / DEGRADATION RATE ──
+  if (history.tireWear.length >= 2) {
+    const prev = history.tireWear[history.tireWear.length - 2];
+    const last = history.tireWear[history.tireWear.length - 1];
+    const frontDegRate = ((last.lf - prev.lf) + (last.rf - prev.rf)) / 2;
+    if (frontDegRate > 5) {
+      recs.push({ id: 'tire-deg', type: 'strategy', priority: 3, message: es
+        ? `📉 Delanteros: ${frontDegRate.toFixed(1)}%/vuelta — suavizar zonas de frenada`
+        : `📉 Front tires: ${frontDegRate.toFixed(1)}%/lap degradation — ease braking zones` });
+    }
+  }
+
+  // ── TENDENCIA DE VUELTAS / LAP TREND ──
+  if (history.lapTimes.length >= 3) {
+    const recent = history.lapTimes.slice(-3);
+    const trend = recent[recent.length - 1] - recent[0];
+    if (trend > 1.0) {
+      recs.push({ id: 'degrading', type: 'strategy', priority: 3, message: es
+        ? `📈 Ritmo cayendo +${trend.toFixed(2)}s en 3 vueltas — problema de neumáticos o setup`
+        : `📈 Pace degrading +${trend.toFixed(2)}s/3 laps — tires or setup issue` });
+    }
+  }
+
+  // ── MANEJO / HANDLING ──
   if (handling === 'oversteer') {
-    recs.push({ id: 'os', type: 'tip', priority: 3, message: `🔄 ${t.oversteer}: smooth throttle exit, reduce mid-corner speed` });
+    const biasTip = brakeBias > 55
+      ? (es ? ` Reducir bias al frente −1% (actual ${brakeBias.toFixed(0)}%)` : ` Try front bias −1% (now ${brakeBias.toFixed(0)}%)`)
+      : '';
+    recs.push({ id: 'os', type: 'tip', priority: 3, message: es
+      ? `🔄 ${t.oversteer}: suavizar salida del gas, reducir velocidad de apoyo.${biasTip}`
+      : `🔄 ${t.oversteer}: smooth throttle exit, reduce mid-corner speed.${biasTip}` });
   } else if (handling === 'understeer') {
-    recs.push({ id: 'us', type: 'tip', priority: 3, message: `🔄 ${t.understeer}: trail-brake deeper, earlier turn-in` });
+    recs.push({ id: 'us', type: 'tip', priority: 3, message: es
+      ? `🔄 ${t.understeer}: frenar más tarde, entrar antes a la curva`
+      : `🔄 ${t.understeer}: trail-brake deeper, earlier turn-in` });
   }
 
-  // Engine temps
+  // ── MOTOR / ENGINE ──
   if (oilTemp > 130) {
-    recs.push({ id: 'oil-hot', type: 'warning', priority: 2, message: `🌡️ ${t.oilTemp}: ${oilTemp}°C — risk of damage` });
+    recs.push({ id: 'oil-hot', type: 'warning', priority: 2, message: es
+      ? `🌡️ ${t.oilTemp}: ${oilTemp}°C — riesgo de daño, levantar en rectas`
+      : `🌡️ ${t.oilTemp}: ${oilTemp}°C — risk of damage, lift on straights` });
   }
   if (waterTemp > 110) {
-    recs.push({ id: 'water-hot', type: 'warning', priority: 2, message: `💧 ${t.waterTemp}: ${waterTemp}°C — overheating!` });
+    recs.push({ id: 'water-hot', type: 'warning', priority: 2, message: es
+      ? `💧 ${t.waterTemp}: ${waterTemp}°C — ¡sobrecalentamiento!`
+      : `💧 ${t.waterTemp}: ${waterTemp}°C — overheating!` });
   }
 
-  // Track temp
+  // ── CAMBIOS / SHIFT EFFICIENCY ──
+  if (slBlinkRPM > 0 && rpm > slBlinkRPM && gear > 0 && gear < 8 && throttle > 80) {
+    recs.push({ id: 'shift-late', type: 'tip', priority: 2, message: es
+      ? `⬆️ En zona de corte (${rpm} RPM) — cambiar de marcha ya`
+      : `⬆️ Over rev-limiter zone (${rpm} RPM) — upshift immediately` });
+  } else if (slShiftRPM > 0 && rpm > slShiftRPM * 1.03 && gear > 0 && gear < 8 && throttle > 80) {
+    recs.push({ id: 'shift-opt', type: 'tip', priority: 4, message: es
+      ? `⬆️ Cambio tardío: ${rpm} RPM — cambio óptimo en ${slShiftRPM}`
+      : `⬆️ Shifting late: ${rpm} RPM — optimal shift at ${slShiftRPM}` });
+  }
+
+  // ── DRS ──
+  if (drsStatus === 1) {
+    recs.push({ id: 'drs', type: 'tip', priority: 3, message: es
+      ? '🏎️ DRS disponible — activar en la próxima recta (+15–25 km/h)'
+      : '🏎️ DRS available — deploy on next straight (+15–25 km/h)' });
+  }
+
+  // ── CONDICIONES DE PISTA / TRACK CONDITIONS ──
   if (trackTemp > 45) {
-    recs.push({ id: 'track-hot', type: 'tip', priority: 4, message: `🌡️ ${t.trackTemp}: ${trackTemp}°C — high degradation` });
+    recs.push({ id: 'track-hot', type: 'tip', priority: 5, message: es
+      ? `🌡️ ${t.trackTemp}: ${trackTemp}°C — desgaste elevado, cuidar neumáticos`
+      : `🌡️ ${t.trackTemp}: ${trackTemp}°C — high degradation, conserve tires` });
   }
-
-  // Wind
   if (windSpeed > 20) {
-    recs.push({ id: 'wind', type: 'tip', priority: 4, message: `💨 ${t.wind}: ${windSpeed.toFixed(0)} km/h` });
+    recs.push({ id: 'wind', type: 'tip', priority: 5, message: es
+      ? `💨 ${t.wind}: ${windSpeed.toFixed(0)} km/h — ajustar frenadas por viento de frente/espalda`
+      : `💨 ${t.wind}: ${windSpeed.toFixed(0)} km/h — adjust braking for headwind/tailwind` });
   }
 
-  // Repeated off-tracks at same corner
+  // ── SALIDAS REPETIDAS / REPEATED OFF-TRACKS ──
   trackPctClusters.forEach((count, zone) => {
     if (count >= 2) {
-      recs.push({ id: `corner-${zone}`, type: 'strategy', priority: 2, message: `⚠️ ${count}x ${t.offTrack} @ ${zone}% — slow entry in that zone` });
+      recs.push({ id: `corner-${zone}`, type: 'strategy', priority: 2, message: es
+        ? `⚠️ ${count}x ${t.offTrack} @ ${zone}% — frenar 5m antes en esa zona`
+        : `⚠️ ${count}x ${t.offTrack} @ ${zone}% — brake 5m earlier in that zone` });
     }
   });
 
-  // Pace
+  // ── RITMO / PACE ──
   if (delta > 2.0 && lap > 3) {
-    recs.push({ id: 'pace', type: 'strategy', priority: 3, message: `📊 +${delta.toFixed(1)}s vs best — push harder or check line` });
+    recs.push({ id: 'pace', type: 'strategy', priority: 3, message: es
+      ? `📊 +${delta.toFixed(1)}s vs mejor — foco en salida de curvas y frenada tardía`
+      : `📊 +${delta.toFixed(1)}s vs best — focus on exit speed and trail braking` });
   }
 
-  // Incidents
+  // ── INCIDENTES / INCIDENTS ──
   if (incidentCount >= 8) {
-    recs.push({ id: 'inc', type: 'warning', priority: 2, message: `⚠️ ${incidentCount}x ${t.incidents} — close to DQ limit` });
+    recs.push({ id: 'inc-dq', type: 'warning', priority: 2, message: es
+      ? `⚠️ ${incidentCount}x ${t.incidents} — cerca del límite de descalificación, conducir defensivo`
+      : `⚠️ ${incidentCount}x ${t.incidents} — near DQ limit, drive defensively` });
+  } else if (incidentCount >= 4) {
+    recs.push({ id: 'inc-warn', type: 'strategy', priority: 4, message: es
+      ? `⚠️ ${incidentCount}x ${t.incidents} — evitar bordillos y maniobras agresivas`
+      : `⚠️ ${incidentCount}x incidents — avoid curbs and aggressive moves` });
   }
 
-  // End race
+  // ── FIN DE CARRERA / END OF RACE ──
   if (lapsRemaining <= 3 && lapsRemaining > 0) {
-    recs.push({ id: 'end', type: 'strategy', priority: 2, message: `🏁 ${lapsRemaining} ${t.lapsLeft} — push, manage risk` });
+    recs.push({ id: 'end', type: 'strategy', priority: 2, message: es
+      ? `🏁 ${lapsRemaining} ${t.lapsLeft} — exigir al máximo, gestionar incidentes`
+      : `🏁 ${lapsRemaining} ${t.lapsLeft} — push to the limit, manage incident risk` });
   }
 
-  return recs.sort((a, b) => a.priority - b.priority).slice(0, 5);
+  return recs.sort((a, b) => a.priority - b.priority).slice(0, 6);
 }
 
 // --- Sub-components ---
+
+function ShiftLightsStrip({ rpm, slFirstRPM, slLastRPM, slBlinkRPM }: {
+  rpm: number; slFirstRPM: number; slLastRPM: number; slBlinkRPM: number;
+}) {
+  const SEGS = 15;
+  const shouldBlink = slBlinkRPM > 0 && rpm >= slBlinkRPM;
+
+  const getSegClass = (i: number): string => {
+    const range = slLastRPM - slFirstRPM;
+    let lit: boolean;
+    if (range > 0 && slFirstRPM > 0) {
+      const segRPM = slFirstRPM + (range / SEGS) * (i + 1);
+      lit = rpm >= segRPM;
+    } else {
+      lit = rpm / 8000 >= (i + 1) / SEGS;
+    }
+    if (!lit) return '';
+    if (i >= 12) return 'lit-red';
+    if (i >= 8)  return 'lit-yellow';
+    return 'lit-green';
+  };
+
+  return (
+    <div className={`shift-strip${shouldBlink ? ' shift-blink' : ''}`}>
+      {Array.from({ length: SEGS }, (_, i) => (
+        <div key={i} className={`shift-seg ${getSegClass(i)}`} />
+      ))}
+    </div>
+  );
+}
 
 function ConnectScreen({ onConnect }: { onConnect: (url: string) => void }) {
   const t = useLiveT();
@@ -221,6 +404,10 @@ export function Live() {
   const gHistRef = useRef<{ x: number; y: number }[]>([]);
   const [showDashboard, setShowDashboard] = useState(!!wsUrl);
   const [showEvents, setShowEvents] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('iracing_tts') !== 'false');
+
+  // Stint history for AI trend analysis
+  const [stintHistory, setStintHistory] = useState<StintHistory>({ lapTimes: [], tireWear: [], fuelPerLap: [], fuelLevels: [] });
 
   // Input trace history (throttle/brake over time)
   const inputSamplesRef = useRef<InputSample[]>([]);
@@ -276,6 +463,19 @@ export function Live() {
       const bestLapTime = (d.bestLapTime as number) || 0;
       if (lastLapTime > 0 && lastLapTime === bestLapTime) {
         addEvent({ lap: lap - 1, trackPct: 0, type: 'best_lap', message: `New best: ${fmt(lastLapTime)} (L${lap - 1})` });
+      }
+      // Record stint history on lap change
+      if (lastLapTime > 0) {
+        const lf = (d.tireLF_wear as number) || 0;
+        const rf = (d.tireRF_wear as number) || 0;
+        const lr = (d.tireLR_wear as number) || 0;
+        const rr = (d.tireRR_wear as number) || 0;
+        setStintHistory((prev) => ({
+          lapTimes: [...prev.lapTimes.slice(-9), lastLapTime],
+          tireWear: [...prev.tireWear.slice(-9), { lap: lap - 1, lf, rf, lr, rr }],
+          fuelPerLap: [...prev.fuelPerLap.slice(-9), (d.fuelUsePerHour as number) || 0],
+          fuelLevels: [...prev.fuelLevels.slice(-9), (d.fuelLevel as number) || 0],
+        }));
       }
     }
     if (lap > 0 && lap !== lastProcessedLap) {
@@ -344,7 +544,7 @@ export function Live() {
   const currentLapTime = (d.currentLapTime as number) || 0;
   const delta = (d.deltaToSessionBest as number) || (d.deltaToBestLap as number) || (d.deltaToOptimal as number) || 0;
   const fuelPercent = (d.fuelPercent as number) || 0;
-  const fuelLevelLiters = (d.fuelLevelLiters as number) || (d.fuelLevel as number) || 0;
+  const fuelLevelLiters = (d.fuelLevel as number) || 0;
   const fuelUsePerHour = (d.fuelUsePerHour as number) || 0;
   const gLateral = (d.gLateral as number) || 0;
   const gLongitudinal = (d.gLongitudinal as number) || 0;
@@ -382,11 +582,16 @@ export function Live() {
   const iRating = (d.driverIRating as number) || 0;
   const sessionName = (d.sessionName as string) || '';
 
+  const slFirstRPM = (d.slFirstRPM as number) || 0;
+  const slLastRPM  = (d.slLastRPM  as number) || 0;
+  const slBlinkRPM = (d.slBlinkRPM as number) || 0;
+
   const fuelPerLap = lap > 1 ? (100 - fuelPercent) / (lap - 1) : 0;
   const fuelLaps = fuelPerLap > 0 ? Math.floor(fuelPercent / fuelPerLap) : 99;
 
-  const recommendations = useMemo(() => generateRecommendations(d, t, events), [
-    fuelPercent, lap, handling, trackTemp, incidentCount, tireLF_wear, tireRF_wear, tireLR_wear, tireRR_wear, delta, oilTemp, waterTemp, events.length, t,
+  const recommendations = useMemo(() => generateRecommendations(d, t, events, stintHistory, lang), [
+    fuelPercent, lap, handling, trackTemp, incidentCount, tireLF_wear, tireRF_wear, tireLR_wear, tireRR_wear,
+    delta, oilTemp, waterTemp, events.length, t, stintHistory, d, lang,
   ]);
 
   // Sound alerts + persist AI messages to event log
@@ -408,239 +613,256 @@ export function Live() {
           data: { recType: rec.type, priority: rec.priority },
         });
       });
+      // Race radio TTS — speak only the highest-priority new message
+      if (ttsEnabled && wsUrl) {
+        const topRec = newRecs.reduce((best, r) => r.priority < best.priority ? r : best, newRecs[0]);
+        speakRecommendation(topRec.message, lang, wsUrl);
+      }
     }
     lastRecIdsRef.current = currentIds;
-  }, [recommendations, lap, d, addEvent]);
+  }, [recommendations, lap, d, addEvent, ttsEnabled, wsUrl, lang]);
 
   const typeColors: Record<string, string> = { warning: 'var(--rc-red)', tip: 'var(--rc-cyan)', strategy: 'var(--rc-yellow)' };
-  const typeBg: Record<string, string> = { warning: '#1a0008', tip: '#001a22', strategy: '#1a1a00' };
+  const typeBg: Record<string, string> = { warning: 'rgba(255,31,68,0.08)', tip: 'rgba(0,200,255,0.06)', strategy: 'rgba(255,194,0,0.06)' };
 
   return (
     <div className={`racing-app h-screen flex flex-col overflow-hidden ${theme === 'light' ? 'racing-light' : ''}`}>
-      {/* Top bar: Session info + controls */}
-      <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--rc-border)' }}>
-        <div className="flex items-center gap-5 text-sm">
-          <span className="flex items-center gap-1.5" style={{ color: 'var(--rc-cyan)' }}>
-            <IconDriver size={15} color="var(--rc-cyan)" /> {driverName}
+
+      {/* SHIFT LIGHTS */}
+      <ShiftLightsStrip rpm={rpm} slFirstRPM={slFirstRPM} slLastRPM={slLastRPM} slBlinkRPM={slBlinkRPM} />
+
+      {/* HEADER */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b" style={{ borderColor: 'var(--rc-border)', background: 'var(--rc-surface)' }}>
+        <div className="flex items-center gap-3 text-sm flex-wrap">
+          <span className="font-bold" style={{ color: 'var(--rc-cyan)', fontSize: '13px' }}>
+            <IconDriver size={13} color="var(--rc-cyan)" /> {driverName}
           </span>
-          {iRating > 0 && <span className="px-2 py-1 rounded text-xs font-bold" style={{ background: '#001a33', color: 'var(--rc-cyan)' }}>{iRating} iR</span>}
-          <span className="flex items-center gap-1.5" style={{ color: 'var(--rc-orange)' }}>
-            <IconCar size={15} color="var(--rc-orange)" /> {carName}
+          {iRating > 0 && (
+            <span className="rc-chip" style={{ background: 'rgba(0,200,255,0.1)', color: 'var(--rc-cyan)' }}>{iRating} iR</span>
+          )}
+          <span className="rc-chip" style={{ background: 'rgba(255,112,67,0.1)', color: 'var(--rc-orange)' }}>
+            <IconCar size={12} color="var(--rc-orange)" /> {carName}
           </span>
-          <span className="flex items-center gap-1.5" style={{ color: 'var(--rc-green)' }}>
-            <IconTrack size={15} color="var(--rc-green)" /> {trackName}{trackConfig ? ` (${trackConfig})` : ''}
+          <span className="rc-chip" style={{ background: 'rgba(0,232,122,0.1)', color: 'var(--rc-green)' }}>
+            <IconTrack size={12} color="var(--rc-green)" /> {trackName}{trackConfig ? ` · ${trackConfig}` : ''}
           </span>
-          <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--rc-text-dim)' }}>
-            <IconClock size={13} color="var(--rc-text-dim)" /> {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          {sessionName && <span className="px-2 py-1 rounded text-xs font-bold" style={{ background: '#1a1a00', color: 'var(--rc-yellow)' }}>{sessionName.toUpperCase()}</span>}
+          {sessionName && (
+            <span className="rc-chip" style={{ background: 'rgba(255,194,0,0.1)', color: 'var(--rc-yellow)' }}>{sessionName.toUpperCase()}</span>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-xs font-mono" style={{ color: 'var(--rc-text-dim)' }}>
-            <IconSpeed size={13} color="var(--rc-text-dim)" /> {maxSpeedSession.toFixed(0)} {t.kmh}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-mono" style={{ color: 'var(--rc-text-dim)' }}>
+            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
-          <button onClick={() => setLang(lang === 'es' ? 'en' : 'es')} className="text-xs px-2 py-1 rounded font-bold" style={{ background: 'var(--rc-surface)', color: 'var(--rc-text-dim)' }}>{lang.toUpperCase()}</button>
-          <button onClick={toggleTheme} className="text-xs px-2 py-1 rounded" style={{ background: 'var(--rc-surface)', color: 'var(--rc-text-dim)' }}>{theme === 'dark' ? '☀' : '☽'}</button>
-          <button onClick={() => setShowEvents(!showEvents)} className="text-xs px-2 py-1 rounded" style={{ background: showEvents ? '#001a22' : 'var(--rc-surface)', color: showEvents ? 'var(--rc-cyan)' : 'var(--rc-text-dim)' }}>
+          <span className="text-xs font-mono" style={{ color: 'var(--rc-text-dim)' }}>MAX {maxSpeedSession.toFixed(0)} {t.kmh}</span>
+          <button onClick={() => setLang(lang === 'es' ? 'en' : 'es')} className="rc-chip" style={{ background: 'var(--rc-card)', color: 'var(--rc-text-dim)' }}>{lang.toUpperCase()}</button>
+          <button onClick={toggleTheme} className="rc-chip" style={{ background: 'var(--rc-card)', color: 'var(--rc-text-dim)' }}>{theme === 'dark' ? '☀' : '☽'}</button>
+          <button onClick={() => setShowEvents(!showEvents)} className="rc-chip" style={{ background: showEvents ? 'rgba(0,200,255,0.1)' : 'var(--rc-card)', color: showEvents ? 'var(--rc-cyan)' : 'var(--rc-text-dim)' }}>
             <IconLog size={13} color={showEvents ? 'var(--rc-cyan)' : 'var(--rc-text-dim)'} />
           </button>
-          <button onClick={handleDisconnect} className="text-xs px-2 py-1 rounded" style={{ background: '#1a0008', color: 'var(--rc-red)' }}>✕</button>
-          <Link to="/analysis" className="text-xs px-2 py-1 rounded font-medium no-underline" style={{ background: 'var(--rc-surface)', color: 'var(--rc-cyan)' }}>{t.analysis}</Link>
+          <button onClick={handleDisconnect} className="rc-chip" style={{ background: 'rgba(255,31,68,0.1)', color: 'var(--rc-red)' }}>✕</button>
+          <Link to="/analysis" className="rc-chip" style={{ background: 'rgba(0,200,255,0.1)', color: 'var(--rc-cyan)' }}>{t.analysis}</Link>
         </div>
       </div>
 
-      {/* Delta bar + status */}
-      <div className="flex items-center gap-3 px-3 py-1.5">
-        <div className="flex-1 h-7 rounded-lg flex items-center px-3 relative" style={{ background: '#0a0a0a', border: '1px solid #222' }}>
-          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[#333]" />
+      {/* STATUS BAR */}
+      <div className="flex items-center gap-2 px-3 py-1">
+        <div className="flex-1 h-6 rounded-md flex items-center px-3 relative" style={{ background: 'var(--rc-surface)', border: '1px solid var(--rc-border)' }}>
+          <div className="absolute left-1/2 top-0 bottom-0 w-px" style={{ background: 'var(--rc-border-strong)' }} />
           <motion.div animate={{ left: `${Math.max(5, Math.min(95, 50 + delta * 20))}%` }} transition={{ duration: 0.06 }}
-            className="absolute top-1 bottom-1 w-3 rounded-sm"
+            className="absolute top-1 bottom-1 w-2.5 rounded-sm"
             style={{ background: delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)', boxShadow: `0 0 8px ${delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)'}` }} />
-          <span className="relative z-10 text-xs font-bold" style={{ color: delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)' }}>
+          <span className="relative z-10 text-xs font-bold font-mono" style={{ color: delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)' }}>
             {delta > 0 ? '+' : ''}{delta.toFixed(3)}
           </span>
-          <span className="ml-auto relative z-10 text-xs" style={{ color: 'var(--rc-text-dim)' }}>{t.delta}</span>
+          <span className="ml-auto relative z-10 text-[10px]" style={{ color: 'var(--rc-text-muted)' }}>{t.delta}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold px-2 py-1 rounded" style={{ background: '#001a0d', color: 'var(--rc-green)' }}>P{position}</span>
-          <span className="text-sm px-2 py-1 rounded" style={{ background: '#111', color: 'var(--rc-text-dim)' }}>L{lap}</span>
-          {onPitRoad && <span className="text-xs font-bold px-2 py-1 rounded blink" style={{ background: '#332200', color: 'var(--rc-yellow)' }}>{t.pit}</span>}
-          {!connected && <span className="text-xs font-bold px-2 py-1 rounded pulse" style={{ background: '#1a0008', color: 'var(--rc-red)' }}>{t.reconnecting}</span>}
-          {absOn && <span className="text-xs font-bold px-2 py-1 rounded blink" style={{ background: '#1a0008', color: 'var(--rc-red)' }}>{t.abs}</span>}
+        <div className="flex items-center gap-1.5">
+          <span className="rc-chip font-bold" style={{ background: 'rgba(0,232,122,0.12)', color: 'var(--rc-green)', fontSize: '13px' }}>P{position}</span>
+          <span className="rc-chip" style={{ background: 'var(--rc-card)', color: 'var(--rc-text-dim)' }}>L{lap}</span>
+          {onPitRoad && <span className="rc-chip blink" style={{ background: 'rgba(255,194,0,0.15)', color: 'var(--rc-yellow)' }}>{t.pit}</span>}
+          {!connected && <span className="rc-chip pulse" style={{ background: 'rgba(255,31,68,0.15)', color: 'var(--rc-red)' }}>{t.reconnecting}</span>}
+          {absOn && <span className="rc-chip blink" style={{ background: 'rgba(255,31,68,0.15)', color: 'var(--rc-red)' }}>{t.abs}</span>}
         </div>
       </div>
 
-      {/* Main Grid */}
+      {/* MAIN GRID: Cockpit(2) | Timing(4) | Performance(3) | Strategy(3) */}
       <div className="flex-1 grid grid-cols-12 gap-2 px-2 pb-2 min-h-0 overflow-hidden">
-        {/* COL 1: Speed + Gear + RPM + Engine */}
+
+        {/* ─── ZONE A: COCKPIT ─── */}
         <div className="col-span-2 flex flex-col gap-2 overflow-hidden">
-          <div className="rc-card flex-1 flex flex-col items-center justify-center">
-            <div className="rc-label">{t.speed}</div>
-            <div className="rc-value text-6xl glow-cyan" style={{ color: 'var(--rc-cyan)' }}>{speed.toFixed(0)}</div>
+          {/* Speed + Gear + RPM */}
+          <div className="rc-card rc-card-cockpit flex-1 flex flex-col items-center justify-center gap-1">
+            <div className="rc-label" style={{ color: 'var(--rc-z-cockpit)' }}>{t.speed}</div>
+            <div className="rc-value glow-cyan" style={{ fontSize: '68px', color: 'var(--rc-cyan)' }}>{speed.toFixed(0)}</div>
             <div className="rc-label">{t.kmh}</div>
-          </div>
-          <div className="rc-card">
-            <RPMBar rpm={rpm} />
-            <div className="flex justify-between mt-1.5 items-center">
-              <span className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>{rpm}</span>
-              <span className="rc-value text-3xl glow-purple" style={{ color: 'var(--rc-purple)' }}>{gear === 0 ? 'N' : gear === -1 ? 'R' : gear}</span>
-              <span className="text-xs" style={{ color: shiftIndicator > 80 ? 'var(--rc-red)' : 'var(--rc-text-dim)' }}>
-                {shiftIndicator > 80 ? `⬆ ${t.shift}` : `${shiftIndicator}%`}
-              </span>
+            <div className="mt-2 w-full px-1">
+              <RPMBar rpm={rpm} />
+              <div className="flex justify-between mt-1 items-center">
+                <span className="text-[10px] font-mono" style={{ color: 'var(--rc-text-muted)' }}>{rpm}</span>
+                <span className="rc-value" style={{ fontSize: '38px', color: 'var(--rc-purple)' }}>
+                  {gear === 0 ? 'N' : gear === -1 ? 'R' : gear}
+                </span>
+                <span className="text-[10px]" style={{ color: shiftIndicator > 80 ? 'var(--rc-red)' : 'var(--rc-text-muted)' }}>
+                  {shiftIndicator > 80 ? `⬆ ${t.shift}` : `${shiftIndicator}%`}
+                </span>
+              </div>
             </div>
           </div>
           {/* Engine temps */}
-          <div className="rc-card">
-            <div className="rc-label mb-1.5"><IconEngine size={14} color="var(--rc-text-dim)" /> {t.engine}</div>
+          <div className="rc-card rc-card-mechanical">
+            <div className="rc-label mb-2" style={{ color: 'var(--rc-z-mechanical)' }}>
+              <IconEngine size={12} color="var(--rc-z-mechanical)" /> {t.engine}
+            </div>
             <div className="space-y-1.5">
-              <TempGauge value={oilTemp} max={150} label={t.oilTemp} icon="🛢️" />
+              <TempGauge value={oilTemp}   max={150} label={t.oilTemp}   icon="🛢️" />
               <TempGauge value={waterTemp} max={120} label={t.waterTemp} icon="💧" />
-              <TempGauge value={oilPress} max={8} label={t.oilPress} icon="⏲️" unit=" bar" />
-              <TempGauge value={voltage} max={15} label={t.voltage} icon="⚡" unit="V" />
+              <TempGauge value={oilPress}  max={8}   label={t.oilPress}  icon="⏲️" unit=" bar" />
+              <TempGauge value={voltage}   max={15}  label={t.voltage}   icon="⚡" unit="V" />
             </div>
           </div>
         </div>
 
-        {/* COL 2: Pedals + Timing + Handling */}
+        {/* ─── ZONE B: TIMING & INPUTS ─── */}
         <div className="col-span-4 flex flex-col gap-2 overflow-hidden">
-          <div className="rc-card">
+          {/* Pedals + Steering */}
+          <div className="rc-card rc-card-cockpit">
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: t.throttle, value: throttle, cls: 'rc-bar-throttle', color: 'var(--rc-green)', icon: '🟢' },
-                { label: t.brake, value: brake, cls: 'rc-bar-brake', color: 'var(--rc-red)', icon: '🔴' },
-                { label: t.clutch, value: clutch, cls: 'rc-bar-clutch', color: 'var(--rc-purple)', icon: '🟣' },
+                { label: t.throttle, value: throttle, cls: 'rc-bar-throttle', color: 'var(--rc-green)' },
+                { label: t.brake,    value: brake,    cls: 'rc-bar-brake',    color: 'var(--rc-red)' },
+                { label: t.clutch,   value: clutch,   cls: 'rc-bar-clutch',   color: 'var(--rc-purple)' },
               ].map(p => (
                 <div key={p.label}>
                   <div className="flex justify-between mb-0.5">
-                    <span className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>{p.icon} {p.label}</span>
-                    <span className="text-sm font-bold" style={{ color: p.color }}>{p.value}%</span>
+                    <span className="rc-label">{p.label}</span>
+                    <span className="text-xs font-bold font-mono" style={{ color: p.color }}>{p.value}%</span>
                   </div>
-                  <div className="h-4 rounded-md overflow-hidden" style={{ background: '#0a0a0a' }}>
+                  <div className="h-3 rounded overflow-hidden" style={{ background: 'var(--rc-surface)' }}>
                     <motion.div animate={{ width: `${p.value}%` }} transition={{ duration: 0.05 }}
-                      className={`h-full rounded-md ${p.cls}`} />
+                      className={`h-full rounded ${p.cls}`} />
                   </div>
                 </div>
               ))}
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>🎯 {t.steering}</span>
-              <div className="flex-1 h-2.5 rounded-full relative" style={{ background: '#0a0a0a' }}>
-                <div className="absolute left-1/2 top-0 bottom-0 w-px" style={{ background: '#333' }} />
+              <span className="rc-label">{t.steering}</span>
+              <div className="flex-1 h-2 rounded-full relative" style={{ background: 'var(--rc-surface)' }}>
+                <div className="absolute left-1/2 top-0 bottom-0 w-px" style={{ background: 'var(--rc-border-strong)' }} />
                 <motion.div animate={{ left: `${50 + steering / 3.6}%` }} transition={{ duration: 0.04 }}
-                  className="absolute top-0 w-2 h-full rounded-full" style={{ background: 'var(--rc-purple)', marginLeft: '-4px', boxShadow: '0 0 6px var(--rc-purple)' }} />
+                  className="absolute top-0 w-2 h-full rounded-full"
+                  style={{ background: 'var(--rc-purple)', marginLeft: '-4px', boxShadow: '0 0 6px var(--rc-purple)' }} />
               </div>
-              <span className="text-sm font-mono font-bold" style={{ color: 'var(--rc-purple)' }}>{steering.toFixed(0)}°</span>
+              <span className="text-xs font-mono font-bold" style={{ color: 'var(--rc-purple)' }}>{steering.toFixed(0)}°</span>
             </div>
           </div>
 
           {/* Timing */}
-          <div className="rc-card">
-            <div className="rc-label mb-1.5"><IconClock size={14} color="var(--rc-text-dim)" /> {t.timing}</div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-              <div><span className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>{t.current}</span><div className="text-sm font-mono">{fmt(currentLapTime)}</div></div>
-              <div><span className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>{t.best}</span><div className="text-sm font-mono glow-purple" style={{ color: 'var(--rc-purple)' }}>{fmt(bestLapTime)}</div></div>
-              <div><span className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>{t.last}</span><div className="text-sm font-mono">{fmt(lastLapTime)}</div></div>
-              <div><span className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>{t.delta}</span><div className="text-sm font-mono font-bold" style={{ color: delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)' }}>{delta > 0 ? '+' : ''}{delta.toFixed(3)}</div></div>
+          <div className="rc-card rc-card-timing">
+            <div className="rc-label mb-2" style={{ color: 'var(--rc-z-timing)' }}>
+              <IconClock size={12} color="var(--rc-z-timing)" /> {t.timing}
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <div>
+                <div className="rc-label">{t.current}</div>
+                <div className="font-mono text-base font-bold">{fmt(currentLapTime)}</div>
+              </div>
+              <div>
+                <div className="rc-label" style={{ color: 'var(--rc-purple)' }}>{t.best}</div>
+                <div className="font-mono text-base font-bold glow-purple" style={{ color: 'var(--rc-purple)' }}>{fmt(bestLapTime)}</div>
+              </div>
+              <div>
+                <div className="rc-label">{t.last}</div>
+                <div className="font-mono text-base">{fmt(lastLapTime)}</div>
+              </div>
+              <div>
+                <div className="rc-label">{t.delta}</div>
+                <div className="font-mono text-base font-bold" style={{ color: delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)' }}>
+                  {delta > 0 ? '+' : ''}{delta.toFixed(3)}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Handling */}
-          <div className="rc-card">
+          <div className="rc-card rc-card-dynamics">
             <div className="flex items-center justify-between">
               <div>
-                <span className="rc-label"><IconGForce size={13} color="var(--rc-text-dim)" /> {t.handling}</span>
+                <div className="rc-label" style={{ color: 'var(--rc-z-dynamics)' }}>
+                  <IconGForce size={12} color="var(--rc-z-dynamics)" /> {t.handling}
+                </div>
                 <div className="text-lg font-bold mt-0.5" style={{ color: handling === 'oversteer' ? 'var(--rc-yellow)' : handling === 'understeer' ? 'var(--rc-red)' : 'var(--rc-green)' }}>
                   {handling === 'oversteer' ? t.oversteer : handling === 'understeer' ? t.understeer : t.neutral}
                 </div>
               </div>
               <div className="text-center">
-                <span className="rc-label">{t.abs}</span>
-                <div className={`text-lg font-bold mt-0.5 ${absOn ? 'blink' : ''}`} style={{ color: absOn ? 'var(--rc-red)' : '#333' }}>
+                <div className="rc-label">{t.abs}</div>
+                <div className={`text-base font-bold mt-0.5 ${absOn ? 'blink' : ''}`} style={{ color: absOn ? 'var(--rc-red)' : 'var(--rc-text-muted)' }}>
                   {absOn ? `● ${t.active}` : `○ ${t.off}`}
                 </div>
               </div>
               <div className="text-center">
-                <span className="rc-label">⚠️ {t.incidents}</span>
-                <div className="text-lg font-bold mt-0.5" style={{ color: incidentCount > 0 ? 'var(--rc-yellow)' : '#333' }}>{incidentCount}x</div>
+                <div className="rc-label">⚠ {t.incidents}</div>
+                <div className="text-base font-bold mt-0.5" style={{ color: incidentCount > 0 ? 'var(--rc-yellow)' : 'var(--rc-text-muted)' }}>{incidentCount}x</div>
               </div>
             </div>
           </div>
 
           {/* Track Map + Sectors + Input Trace */}
-          <div className="rc-card">
+          <div className="rc-card rc-card-timing flex-1 overflow-hidden flex flex-col gap-3">
             <TrackMapLinear
               lapDistPct={(d.lapDistPct as number) || 0}
               isOffTrack={(d.isOffTrack as boolean) || false}
               labels={{ s1: t.s1, s2: t.s2, s3: t.s3, trackMap: t.trackMap }}
             />
-            <div className="mt-3">
-              <SectorTimes
-                currentSectors={currentSectors}
-                previousSectors={previousSectors}
-                labels={{ sectors: t.sectors, s1: t.s1, s2: t.s2, s3: t.s3, better: t.better, worse: t.worse }}
-              />
-            </div>
-            <div className="mt-3">
-              <InputTrace
-                samples={inputSamples}
-                durationMs={10000}
-                labels={{ inputTrace: t.inputTrace, throttle: t.throttle, brake: t.brake }}
-              />
-            </div>
-          </div>
-
-          {/* AI Recommendations */}
-          <div className="rc-card flex-1 overflow-hidden flex flex-col">
-            <div className="rc-label mb-1.5"><IconAI size={14} color="var(--rc-cyan)" /> {t.aiEngineer}</div>
-            {recommendations.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center"><span className="text-xs" style={{ color: '#444' }}>{t.analyzing}</span></div>
-            ) : (
-              <div className="flex-1 space-y-1 overflow-y-auto">
-                {recommendations.map((rec) => (
-                  <div key={rec.id} className="px-2 py-1 rounded text-xs leading-tight"
-                    style={{ background: typeBg[rec.type], borderLeft: `2px solid ${typeColors[rec.type]}` }}>
-                    {rec.message}
-                  </div>
-                ))}
-              </div>
-            )}
+            <SectorTimes
+              currentSectors={currentSectors}
+              previousSectors={previousSectors}
+              labels={{ sectors: t.sectors, s1: t.s1, s2: t.s2, s3: t.s3, better: t.better, worse: t.worse }}
+            />
+            <InputTrace
+              samples={inputSamples}
+              durationMs={10000}
+              labels={{ inputTrace: t.inputTrace, throttle: t.throttle, brake: t.brake }}
+            />
           </div>
         </div>
 
-        {/* COL 3: G-Force + Tires + Fuel + Weather */}
+        {/* ─── ZONE C: PERFORMANCE ─── */}
         <div className="col-span-3 flex flex-col gap-2 overflow-hidden">
           {/* G-Force */}
-          <div className="rc-card">
-            <div className="rc-section-title mb-2"><IconGForce size={14} color="var(--rc-cyan)" /> {t.gforce}</div>
+          <div className="rc-card rc-card-dynamics">
+            <div className="rc-section-title mb-2" style={{ color: 'var(--rc-z-dynamics)' }}>
+              <IconGForce size={13} color="var(--rc-z-dynamics)" /> {t.gforce}
+            </div>
             <div className="flex items-center gap-4">
-              <div className="relative w-20 h-20 flex-shrink-0 gforce-container p-1" style={{ background: 'var(--rc-gforce-bg)', borderRadius: '50%' }}>
+              <div className="relative w-20 h-20 flex-shrink-0 gforce-container p-1">
                 <svg viewBox="0 0 100 100" className="w-full h-full">
-                  {/* Background fill */}
                   <circle cx="50" cy="50" r="48" fill="var(--rc-gforce-bg)" />
-                  {/* Rings */}
                   <circle cx="50" cy="50" r="42" fill="none" className="gforce-ring" strokeWidth="1.2" />
                   <circle cx="50" cy="50" r="28" fill="none" className="gforce-ring" strokeWidth="0.8" />
                   <circle cx="50" cy="50" r="14" fill="none" className="gforce-ring" strokeWidth="0.6" />
-                  {/* Crosshair */}
                   <line x1="8" y1="50" x2="92" y2="50" className="gforce-cross" strokeWidth="0.6" />
                   <line x1="50" y1="8" x2="50" y2="92" className="gforce-cross" strokeWidth="0.6" />
-                  {/* Trail dots */}
                   {gHistRef.current.map((p, i) => (
-                    <circle key={i} cx={50 + Math.max(-40, Math.min(40, p.x * 12))} cy={50 + Math.max(-40, Math.min(40, p.y * 12))}
-                      r="2" className="gforce-trail" opacity={0.15 + (i / gHistRef.current.length) * 0.45} />
+                    <circle key={i}
+                      cx={50 + Math.max(-40, Math.min(40, p.x * 12))}
+                      cy={50 + Math.max(-40, Math.min(40, p.y * 12))}
+                      r="2" className="gforce-trail" opacity={0.12 + (i / gHistRef.current.length) * 0.5} />
                   ))}
-                  {/* Current position */}
-                  <circle cx={50 + Math.max(-40, Math.min(40, gLateral * 12))} cy={50 + Math.max(-40, Math.min(40, gLongitudinal * 12))}
+                  <circle
+                    cx={50 + Math.max(-40, Math.min(40, gLateral * 12))}
+                    cy={50 + Math.max(-40, Math.min(40, gLongitudinal * 12))}
                     r="5" className="gforce-dot" />
                 </svg>
               </div>
-              <div className="text-sm font-mono space-y-1">
+              <div className="font-mono space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <span style={{ color: 'var(--rc-text-dim)' }}>{t.lat}</span>
+                  <span className="rc-label">{t.lat}</span>
                   <span className="font-bold text-base" style={{ color: 'var(--rc-cyan)' }}>{Math.abs(gLateral).toFixed(2)}g</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span style={{ color: 'var(--rc-text-dim)' }}>{t.lon}</span>
+                  <span className="rc-label">{t.lon}</span>
                   <span className="font-bold text-base" style={{ color: 'var(--rc-cyan)' }}>{Math.abs(gLongitudinal).toFixed(2)}g</span>
                 </div>
               </div>
@@ -648,78 +870,229 @@ export function Live() {
           </div>
 
           {/* Tires */}
-          <div className="rc-card">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="rc-label"><IconTire size={14} color="var(--rc-text-dim)" /> {t.tires}</span>
-              <span className="text-xs px-2 py-1 rounded" style={{ background: '#111', color: 'var(--rc-text-dim)' }}>{tireCompound}</span>
+          <div className="rc-card rc-card-mechanical">
+            <div className="flex items-center justify-between mb-2">
+              <span className="rc-section-title" style={{ color: 'var(--rc-z-mechanical)' }}>
+                <IconTire size={13} color="var(--rc-z-mechanical)" /> {t.tires}
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded font-bold" style={{ background: 'var(--rc-surface)', color: 'var(--rc-text-dim)' }}>{tireCompound}</span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-1.5">
               {[
-                { pos: t.fl, temp: tireLF_temp, wear: tireLF_wear },
-                { pos: t.fr, temp: tireRF_temp, wear: tireRF_wear },
-                { pos: t.rl, temp: tireLR_temp, wear: tireLR_wear },
-                { pos: t.rr, temp: tireRR_temp, wear: tireRR_wear },
+                { pos: t.fl, temp: tireLF_temp, wear: tireLF_wear, cls: 'tire-cell-lf' },
+                { pos: t.fr, temp: tireRF_temp, wear: tireRF_wear, cls: 'tire-cell-rf' },
+                { pos: t.rl, temp: tireLR_temp, wear: tireLR_wear, cls: 'tire-cell-lr' },
+                { pos: t.rr, temp: tireRR_temp, wear: tireRR_wear, cls: 'tire-cell-rr' },
               ].map(tire => {
                 const temp = tire.temp || 0;
-                const tColor = temp > 110 ? 'var(--rc-red)' : temp > 90 ? 'var(--rc-yellow)' : temp > 50 ? 'var(--rc-green)' : '#444';
+                const tColor = temp > 110 ? 'var(--rc-red)' : temp > 65 ? 'var(--rc-green)' : temp > 0 ? 'var(--rc-cyan)' : 'var(--rc-text-muted)';
                 const wearPct = tire.wear || 0;
                 const wColor = wearPct > 70 ? 'var(--rc-red)' : wearPct > 50 ? 'var(--rc-yellow)' : 'var(--rc-green)';
+                const tempStatus = temp <= 0 ? null : temp < 65 ? { label: t.tireColdStatus, color: 'var(--rc-cyan)' } : temp > 105 ? { label: t.tireHotStatus, color: 'var(--rc-red)' } : { label: t.tireOptStatus, color: 'var(--rc-green)' };
                 return (
-                  <div key={tire.pos} className="rounded px-2 py-1" style={{ background: '#0a0a0a' }}>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold" style={{ color: '#555' }}>{tire.pos}</span>
-                      <span className="text-xs font-bold font-mono" style={{ color: tColor }}>{temp > 0 ? `${temp}°` : '--'}</span>
-                    </div>
-                    {wearPct > 0 && (
-                      <div className="mt-0.5">
-                        <div className="h-1 rounded-full overflow-hidden" style={{ background: '#1a1a1a' }}>
-                          <div className="h-full rounded-full" style={{ width: `${Math.min(100, wearPct)}%`, background: wColor }} />
-                        </div>
-                        <span className="text-[10px]" style={{ color: '#555' }}>{wearPct.toFixed(0)}% {t.wear}</span>
+                  <div key={tire.pos} className={`tire-cell ${tire.cls}`}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-bold" style={{ color: 'var(--rc-text-dim)' }}>{tire.pos}</span>
+                      <div className="flex items-center gap-1">
+                        {tempStatus && (
+                          <span className="text-[8px] font-bold px-1 rounded" style={{ background: `${tempStatus.color}22`, color: tempStatus.color }}>{tempStatus.label}</span>
+                        )}
+                        <span className="text-sm font-mono font-bold" style={{ color: tColor }}>{temp > 0 ? `${temp.toFixed(0)}°` : '--'}</span>
                       </div>
-                    )}
+                    </div>
+                    <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--rc-border-strong)' }}>
+                      <div className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(100, wearPct)}%`, background: wColor }} />
+                    </div>
+                    <div className="text-[9px] mt-0.5 font-mono" style={{ color: 'var(--rc-text-muted)' }}>
+                      {wearPct > 0 ? `${wearPct.toFixed(0)}% ${t.wear}` : `0% ${t.wear}`}
+                    </div>
                   </div>
                 );
               })}
             </div>
+            <div className="text-[9px] mt-1 text-center" style={{ color: 'var(--rc-text-muted)' }}>{t.tireOptRange}</div>
           </div>
 
           {/* Fuel */}
-          <div className="rc-card">
-            <div className="rc-label mb-1.5"><IconFuel size={14} color="var(--rc-text-dim)" /> {t.fuel}</div>
+          <div className="rc-card rc-card-strategy">
+            <div className="rc-label mb-1.5" style={{ color: 'var(--rc-z-strategy)' }}>
+              <IconFuel size={12} color="var(--rc-z-strategy)" /> {t.fuel}
+            </div>
             <FuelGauge value={fuelPercent} label={t.level} icon="📊" />
             <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-              <div className="flex justify-between"><span style={{ color: '#666' }}>{t.liters}</span><span className="font-mono">{fuelLevelLiters.toFixed(1)}L</span></div>
-              <div className="flex justify-between"><span style={{ color: '#666' }}>{t.perLap}</span><span className="font-mono">{fuelPerLap.toFixed(1)}%</span></div>
-              <div className="flex justify-between"><span style={{ color: '#666' }}>{t.lapsLeft}</span><span className="font-mono font-bold" style={{ color: fuelLaps < 3 ? 'var(--rc-red)' : 'var(--rc-green)' }}>{fuelLaps}</span></div>
-              <div className="flex justify-between"><span style={{ color: '#666' }}>{t.consumption}</span><span className="font-mono">{fuelUsePerHour.toFixed(1)} L/h</span></div>
+              <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>{t.liters}</span><span className="font-mono">{fuelLevelLiters.toFixed(1)}L</span></div>
+              <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>{t.perLap}</span><span className="font-mono">{fuelPerLap.toFixed(1)}%</span></div>
+              <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>{t.lapsLeft}</span>
+                <span className="font-mono font-bold" style={{ color: fuelLaps < 3 ? 'var(--rc-red)' : 'var(--rc-green)' }}>{fuelLaps}</span></div>
+              <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>{t.consumption}</span><span className="font-mono">{fuelUsePerHour.toFixed(1)} L/h</span></div>
             </div>
           </div>
 
           {/* Weather */}
           <div className="rc-card">
-            <div className="rc-label mb-1.5"><IconWeather size={14} color="var(--rc-text-dim)" /> {t.weather}</div>
+            <div className="rc-label mb-1.5"><IconWeather size={12} color="var(--rc-text-dim)" /> {t.weather}</div>
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-              <div className="flex justify-between"><span style={{ color: '#666' }}>🌡️ {t.air}</span><span className="font-mono">{airTemp > 0 ? `${airTemp}°C` : '--'}</span></div>
-              <div className="flex justify-between"><span style={{ color: '#666' }}>🛣️ {t.trackTemp}</span><span className="font-mono" style={{ color: trackTemp > 40 ? 'var(--rc-red)' : 'var(--rc-green)' }}>{trackTemp > 0 ? `${trackTemp}°C` : '--'}</span></div>
-              <div className="flex justify-between"><span style={{ color: '#666' }}>💨 {t.wind}</span><span className="font-mono">{windSpeed > 0 ? `${windSpeed.toFixed(0)} km/h` : '--'}</span></div>
-              <div className="flex justify-between"><span style={{ color: '#666' }}>💧 {t.humidity}</span><span className="font-mono">{humidity > 0 ? `${humidity}%` : '--'}</span></div>
-              {skies && <div className="flex justify-between col-span-2"><span style={{ color: '#666' }}>☁️ {t.skies}</span><span className="font-mono capitalize">{skies}</span></div>}
+              <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>🌡 {t.air}</span><span className="font-mono">{airTemp > 0 ? `${airTemp}°C` : '--'}</span></div>
+              <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>🛣 {t.trackTemp}</span>
+                <span className="font-mono" style={{ color: trackTemp > 40 ? 'var(--rc-red)' : 'var(--rc-green)' }}>{trackTemp > 0 ? `${trackTemp}°C` : '--'}</span></div>
+              <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>💨 {t.wind}</span><span className="font-mono">{windSpeed > 0 ? `${windSpeed.toFixed(0)} km/h` : '--'}</span></div>
+              <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>💧 {t.humidity}</span><span className="font-mono">{humidity > 0 ? `${humidity}%` : '--'}</span></div>
+              {skies && <div className="col-span-2 flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>☁ {t.skies}</span><span className="font-mono capitalize">{skies}</span></div>}
             </div>
           </div>
         </div>
 
-        {/* COL 4: Track Info + Event Log */}
+        {/* ─── ZONE D: STRATEGY ─── */}
         <div className="col-span-3 flex flex-col gap-2 overflow-hidden">
-          {/* Track Info Panel */}
+
+          {/* AI Engineer — prominent top position */}
+          <div className="rc-card rc-card-strategy flex-1 overflow-hidden flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-2">
+              <span className="rc-section-title" style={{ color: 'var(--rc-z-strategy)' }}>
+                <IconAI size={14} color="var(--rc-z-strategy)" /> {t.aiEngineer}
+              </span>
+              <button
+                onClick={() => { const next = !ttsEnabled; setTtsEnabled(next); localStorage.setItem('iracing_tts', String(next)); }}
+                title={ttsEnabled ? (lang === 'es' ? 'Radio encendida — clic para apagar' : 'Radio on — click to mute') : (lang === 'es' ? 'Radio apagada — clic para activar' : 'Radio off — click to enable')}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-all"
+                style={{
+                  background: ttsEnabled ? 'rgba(0,200,255,0.15)' : 'var(--rc-surface)',
+                  color: ttsEnabled ? 'var(--rc-cyan)' : 'var(--rc-text-muted)',
+                  border: `1px solid ${ttsEnabled ? 'var(--rc-cyan)' : 'var(--rc-border)'}`,
+                }}>
+                🎙 {lang === 'es' ? (ttsEnabled ? 'RADIO' : 'RADIO') : (ttsEnabled ? 'RADIO' : 'RADIO')}
+              </button>
+            </div>
+            {recommendations.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center">
+                <span className="text-xs" style={{ color: 'var(--rc-text-muted)' }}>{t.analyzing}</span>
+              </div>
+            ) : (
+              <div className="flex-1 space-y-1 overflow-y-auto">
+                {recommendations.map((rec) => (
+                  <div key={rec.id} className="px-2 py-1.5 rounded text-xs leading-snug"
+                    style={{ background: typeBg[rec.type], borderLeft: `2px solid ${typeColors[rec.type]}` }}>
+                    {rec.message}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Stint Pace */}
+          {stintHistory.lapTimes.length > 0 && (() => {
+            const times = stintHistory.lapTimes;
+            const best = Math.min(...times.filter((x) => x > 0));
+            const avg = times.filter((x) => x > 0).reduce((a, b) => a + b, 0) / times.filter((x) => x > 0).length;
+            const trend = times.length >= 3 ? times[times.length - 1] - times[times.length - 3] : 0;
+            const avgFrontDeg = stintHistory.tireWear.length >= 2
+              ? (() => {
+                  const prev = stintHistory.tireWear[stintHistory.tireWear.length - 2];
+                  const last = stintHistory.tireWear[stintHistory.tireWear.length - 1];
+                  return ((last.lf - prev.lf) + (last.rf - prev.rf)) / 2;
+                })() : 0;
+            return (
+              <div className="rc-card rc-card-timing flex-shrink-0">
+                <div className="rc-section-title mb-2" style={{ color: 'var(--rc-z-timing)' }}>📊 {t.stintPace}</div>
+                <div className="space-y-1.5">
+                  <div className="flex gap-1 flex-wrap">
+                    {times.slice(-5).map((lt, i, arr) => {
+                      const actualLap = lap - (arr.length - 1 - i);
+                      const isBest = lt === best;
+                      const color = isBest ? 'var(--rc-purple)' : lt < avg ? 'var(--rc-green)' : 'var(--rc-red)';
+                      return (
+                        <div key={i} className="flex-1 text-center rounded px-1 py-0.5" style={{ background: 'var(--rc-surface)', minWidth: '44px' }}>
+                          <div className="text-[9px]" style={{ color: 'var(--rc-text-muted)' }}>{t.lapLabel}{actualLap > 0 ? actualLap : '?'}</div>
+                          <div className="text-[10px] font-mono font-bold" style={{ color }}>{fmt(lt)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <div className="text-center">
+                      <div className="rc-label" style={{ fontSize: '9px' }}>{t.trendPer3L}</div>
+                      <div className="font-mono font-bold text-[10px]" style={{ color: Math.abs(trend) < 0.2 ? 'var(--rc-green)' : trend > 0 ? 'var(--rc-red)' : 'var(--rc-green)' }}>
+                        {trend > 0 ? '+' : ''}{trend.toFixed(2)}s
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="rc-label" style={{ fontSize: '9px' }}>{t.best}</div>
+                      <div className="font-mono text-[10px]" style={{ color: 'var(--rc-purple)' }}>{fmt(best)}</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="rc-label" style={{ fontSize: '9px' }}>{t.frontDegL}</div>
+                      <div className="font-mono font-bold text-[10px]" style={{ color: avgFrontDeg > 4 ? 'var(--rc-red)' : avgFrontDeg > 2 ? 'var(--rc-yellow)' : 'var(--rc-green)' }}>
+                        {avgFrontDeg > 0 ? `${avgFrontDeg.toFixed(1)}%` : '--'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Lap History Table */}
+          {stintHistory.lapTimes.length > 0 && (() => {
+            const times = stintHistory.lapTimes;
+            const best = Math.min(...times.filter((x) => x > 0));
+            return (
+              <div className="rc-card rc-card-timing flex-shrink-0">
+                <div className="rc-section-title mb-2" style={{ color: 'var(--rc-z-timing)' }}>📋 {t.lapHistoryTitle}</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[10px] font-mono">
+                    <thead>
+                      <tr style={{ color: 'var(--rc-text-muted)', borderBottom: '1px solid var(--rc-border)' }}>
+                        <th className="text-left pb-1 pr-2">{t.lapLabel}</th>
+                        <th className="text-right pb-1 pr-2">{t.timing}</th>
+                        <th className="text-right pb-1 pr-2">{t.deltaVsBest}</th>
+                        <th className="text-right pb-1 pr-2">{t.wear}</th>
+                        <th className="text-right pb-1">{t.fuelUsed}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {times.map((lt, i) => {
+                        const lapNum = lap - (times.length - 1 - i);
+                        const delta = lt - best;
+                        const wear = stintHistory.tireWear[i];
+                        const maxW = wear ? Math.max(wear.lf, wear.rf, wear.lr, wear.rr) : null;
+                        const fuelLvl = stintHistory.fuelLevels[i];
+                        const prevFuel = i > 0 ? stintHistory.fuelLevels[i - 1] : null;
+                        const fuelDelta = prevFuel != null && fuelLvl != null ? prevFuel - fuelLvl : null;
+                        const ltColor = lt === best ? 'var(--rc-purple)' : lt < times.reduce((a, b) => a + b, 0) / times.length ? 'var(--rc-green)' : 'var(--rc-red)';
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--rc-surface)' }}>
+                            <td className="py-0.5 pr-2" style={{ color: 'var(--rc-text-muted)' }}>{lapNum > 0 ? lapNum : '?'}</td>
+                            <td className="py-0.5 pr-2 text-right font-bold" style={{ color: ltColor }}>{fmt(lt)}</td>
+                            <td className="py-0.5 pr-2 text-right" style={{ color: delta < 0.01 ? 'var(--rc-purple)' : 'var(--rc-text-dim)' }}>
+                              {delta < 0.01 ? '🏅' : `+${delta.toFixed(3)}`}
+                            </td>
+                            <td className="py-0.5 pr-2 text-right" style={{ color: maxW != null && maxW > 60 ? 'var(--rc-red)' : 'var(--rc-text-dim)' }}>
+                              {maxW != null ? `${maxW.toFixed(0)}%` : '--'}
+                            </td>
+                            <td className="py-0.5 text-right" style={{ color: 'var(--rc-text-dim)' }}>
+                              {fuelDelta != null ? `${fuelDelta.toFixed(2)}L` : '--'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Track Info */}
           {(() => {
             const trackInfo = findTrackInfo(trackName);
             if (!trackInfo) return null;
             const tip = lang === 'es' ? trackInfo.tipEs : trackInfo.tipEn;
-            const particularity = lang === 'es' ? trackInfo.particularityEs : trackInfo.particularityEn;
             return (
               <div className="rc-card flex-shrink-0">
-                <div className="rc-section-title mb-2"><IconInfo size={14} color="var(--rc-purple)" /> {lang === 'es' ? 'Info del Circuito' : 'Track Info'}</div>
+                <div className="rc-section-title mb-2">
+                  <IconInfo size={13} color="var(--rc-purple)" /> {t.trackInfo}
+                </div>
                 <div className="space-y-1.5">
                   <div className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>
                     <span className="font-bold" style={{ color: 'var(--rc-text)' }}>{trackInfo.name}</span>
@@ -733,64 +1106,45 @@ export function Live() {
                   <div className="text-xs leading-relaxed" style={{ color: 'var(--rc-text-dim)', borderLeft: '2px solid var(--rc-purple)', paddingLeft: '8px' }}>
                     {tip}
                   </div>
-                  <div className="text-xs leading-relaxed" style={{ color: 'var(--rc-text-muted)', borderLeft: '2px solid var(--rc-border)', paddingLeft: '8px' }}>
-                    {particularity}
-                  </div>
                 </div>
               </div>
             );
           })()}
 
+          {/* Event Log */}
           {showEvents ? (
-            <div className="rc-card flex-1 flex flex-col overflow-hidden">
+            <div className="rc-card flex-shrink-0 max-h-40 overflow-hidden flex flex-col">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="rc-section-title"><IconLog size={14} color="var(--rc-text-dim)" /> {t.events}</span>
-                <button onClick={clearSession} className="text-xs px-2 py-1 rounded" style={{ background: '#1a0008', color: 'var(--rc-red)' }}>{t.clearLog}</button>
+                <span className="rc-section-title"><IconLog size={13} color="var(--rc-text-dim)" /> {t.events}</span>
+                <button onClick={() => { clearSession(); setStintHistory({ lapTimes: [], tireWear: [], fuelPerLap: [], fuelLevels: [] }); }}
+                  className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(255,31,68,0.1)', color: 'var(--rc-red)' }}>{t.clearLog}</button>
               </div>
               <div className="flex-1 overflow-y-auto space-y-0.5">
                 {events.slice().reverse().slice(0, 50).map((evt) => {
                   const evtColor = evt.type === 'off_track' ? 'var(--rc-red)' : evt.type === 'best_lap' ? 'var(--rc-green)' : evt.type === 'max_speed' ? 'var(--rc-cyan)' : 'var(--rc-yellow)';
                   return (
-                    <div key={evt.id} className="text-xs px-2 py-1 rounded flex items-center gap-2" style={{ background: '#0a0a0a' }}>
+                    <div key={evt.id} className="text-[10px] px-2 py-0.5 rounded flex items-center gap-2" style={{ background: 'var(--rc-surface)' }}>
                       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: evtColor }} />
                       <span style={{ color: 'var(--rc-text-dim)' }}>{evt.message}</span>
                     </div>
                   );
                 })}
-                {events.length === 0 && <span className="text-xs" style={{ color: '#444' }}>{t.noEvents}</span>}
+                {events.length === 0 && <span className="text-xs" style={{ color: 'var(--rc-text-muted)' }}>{t.noEvents}</span>}
               </div>
             </div>
           ) : (
-            <>
-              {/* Lap history summary */}
-              <div className="rc-card">
-                <div className="rc-label mb-1.5">📊 {t.events}</div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between"><span style={{ color: '#666' }}>⚡ {t.maxSpeed}</span><span className="font-mono font-bold" style={{ color: 'var(--rc-cyan)' }}>{maxSpeedSession.toFixed(0)} {t.kmh}</span></div>
-                  <div className="flex justify-between"><span style={{ color: '#666' }}>🛞 {t.offTrack}</span><span className="font-mono">{events.filter(e => e.type === 'off_track').length}x</span></div>
-                  <div className="flex justify-between"><span style={{ color: '#666' }}>⚠️ {t.incidents}</span><span className="font-mono">{incidentCount}x</span></div>
-                  <div className="flex justify-between"><span style={{ color: '#666' }}>🏆 {t.bestLapEvent}</span><span className="font-mono glow-purple" style={{ color: 'var(--rc-purple)' }}>{fmt(bestLapTime)}</span></div>
-                </div>
+            <div className="rc-card flex-shrink-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className="rc-label"><IconLog size={12} color="var(--rc-text-dim)" /> {t.events}</span>
+                <button onClick={() => setShowEvents(true)} className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'var(--rc-surface)', color: 'var(--rc-text-dim)' }}>+</button>
               </div>
-              {/* Recent events (compact) */}
-              <div className="rc-card flex-1 overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="rc-label"><IconLog size={13} color="var(--rc-text-dim)" /> {t.recent}</span>
-                  <button onClick={() => setShowEvents(true)} className="text-xs px-2 py-1 rounded" style={{ background: '#111', color: 'var(--rc-text-dim)' }}>+</button>
-                </div>
-                <div className="flex-1 overflow-y-auto space-y-0.5">
-                  {events.slice(-8).reverse().map((evt) => {
-                    const evtColor = evt.type === 'off_track' ? 'var(--rc-red)' : evt.type === 'best_lap' ? 'var(--rc-green)' : 'var(--rc-yellow)';
-                    return (
-                      <div key={evt.id} className="text-xs px-1 py-1 rounded flex items-center gap-1" style={{ background: '#0a0a0a' }}>
-                        <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: evtColor }} />
-                        <span style={{ color: 'var(--rc-text-dim)' }}>{evt.message}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>⚡ {t.maxSpeed}</span><span className="font-mono font-bold" style={{ color: 'var(--rc-cyan)' }}>{maxSpeedSession.toFixed(0)} {t.kmh}</span></div>
+                <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>🛞 {t.offTrack}</span><span className="font-mono">{events.filter(e => e.type === 'off_track').length}x</span></div>
+                <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>⚠ {t.incidents}</span><span className="font-mono">{incidentCount}x</span></div>
+                <div className="flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>🏆 {t.bestLapEvent}</span><span className="font-mono" style={{ color: 'var(--rc-purple)' }}>{fmt(bestLapTime)}</span></div>
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>

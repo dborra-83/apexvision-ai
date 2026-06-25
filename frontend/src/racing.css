@@ -1,184 +1,226 @@
-/* ApexVision AI — Racing Dashboard Theme v3
-   Inspired by SimHub DDU + F1 TV + McLaren Applied
-   
-   Scoped: todas las variables y reglas bajo .racing-app.
-   Solo se activa en la vista /live dentro del wrapper .racing-app. */
+/* ApexVision AI — Racing Dashboard Theme v4
+   Design: Carbon Fiber HUD — race-engineer grade
+   Scoped: all rules under .racing-app (activated on /live) */
 
 .racing-app {
-  /* Variables de tema racing (dark) */
-  --rc-bg: #050508;
-  --rc-surface: #0c0c12;
-  --rc-card: #12121a;
-  --rc-card-hover: #1a1a24;
-  --rc-border: #2a2a3a;
-  --rc-border-accent: #3a3a50;
-  --rc-text: #f0f0f5;
-  --rc-text-dim: #8888a0;
-  --rc-text-muted: #555566;
-  --rc-green: #00ff87;
-  --rc-red: #ff2d55;
-  --rc-cyan: #00d4ff;
-  --rc-yellow: #ffd000;
-  --rc-purple: #b066ff;
-  --rc-orange: #ff6b00;
-  --rc-blue: #0088ff;
-  --rc-gforce-bg: #1a1a2e;
-  --rc-gforce-ring: #2a2a44;
-  --rc-gforce-cross: #333355;
+  /* ─── Core Palette ─── */
+  --rc-bg: #020204;
+  --rc-surface: #07070e;
+  --rc-card: #0c0c18;
+  --rc-border: rgba(255, 255, 255, 0.06);
+  --rc-border-strong: rgba(255, 255, 255, 0.14);
+  --rc-text: #e6e6f0;
+  --rc-text-dim: #6a6a88;
+  --rc-text-muted: #363650;
 
-  /* Layout base */
+  /* ─── Status Colors ─── */
+  --rc-green:  #00e87a;
+  --rc-red:    #ff1f44;
+  --rc-cyan:   #00c8ff;
+  --rc-yellow: #ffc200;
+  --rc-purple: #b366ff;
+  --rc-orange: #ff7043;
+  --rc-blue:   #3b82f6;
+
+  /* ─── Zone Accent Colors ─── */
+  --rc-z-cockpit:    #00c8ff;
+  --rc-z-timing:     #b366ff;
+  --rc-z-dynamics:   #f59e0b;
+  --rc-z-mechanical: #ff7043;
+  --rc-z-strategy:   #00e87a;
+
+  /* ─── G-Force Specific ─── */
+  --rc-gforce-bg:    #08081a;
+  --rc-gforce-ring:  rgba(255, 255, 255, 0.07);
+  --rc-gforce-cross: rgba(255, 255, 255, 0.04);
+
   background: var(--rc-bg);
   color: var(--rc-text);
   font-family: 'Inter', 'SF Pro Display', -apple-system, sans-serif;
   min-height: 100vh;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
+/* ─── Base Card ─── */
 .racing-app .rc-card {
   background: var(--rc-card);
-  border: 1.5px solid var(--rc-border);
-  border-radius: 12px;
-  padding: 14px 16px;
-  backdrop-filter: blur(4px);
+  border: 1px solid var(--rc-border);
+  border-radius: 8px;
+  padding: 10px 12px;
 }
 
-.racing-app .rc-card-accent {
-  border-color: var(--rc-border-accent);
-  box-shadow: 0 0 12px rgba(0, 212, 255, 0.04), inset 0 1px 0 rgba(255,255,255,0.02);
-}
+/* ─── Zone-tinted cards (top accent border) ─── */
+.racing-app .rc-card-cockpit    { border-top: 2px solid var(--rc-z-cockpit);    background: linear-gradient(180deg, rgba(0,200,255,0.03) 0%, var(--rc-card) 30%); }
+.racing-app .rc-card-timing     { border-top: 2px solid var(--rc-z-timing);     background: linear-gradient(180deg, rgba(179,102,255,0.03) 0%, var(--rc-card) 30%); }
+.racing-app .rc-card-dynamics   { border-top: 2px solid var(--rc-z-dynamics);   background: linear-gradient(180deg, rgba(245,158,11,0.03) 0%, var(--rc-card) 30%); }
+.racing-app .rc-card-mechanical { border-top: 2px solid var(--rc-z-mechanical); background: linear-gradient(180deg, rgba(255,112,67,0.03) 0%, var(--rc-card) 30%); }
+.racing-app .rc-card-strategy   { border-top: 2px solid var(--rc-z-strategy);   background: linear-gradient(180deg, rgba(0,232,122,0.03) 0%, var(--rc-card) 30%); }
 
+/* ─── Typography ─── */
 .racing-app .rc-value {
   font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
   font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 0.9;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .racing-app .rc-label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--rc-text-dim);
 }
 
 .racing-app .rc-section-title {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--rc-text-dim);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-/* Glow effects */
-.racing-app .glow-green { text-shadow: 0 0 16px var(--rc-green), 0 0 4px var(--rc-green); }
-.racing-app .glow-red { text-shadow: 0 0 16px var(--rc-red), 0 0 4px var(--rc-red); }
-.racing-app .glow-cyan { text-shadow: 0 0 16px var(--rc-cyan), 0 0 4px var(--rc-cyan); }
-.racing-app .glow-yellow { text-shadow: 0 0 16px var(--rc-yellow), 0 0 4px var(--rc-yellow); }
-.racing-app .glow-purple { text-shadow: 0 0 16px var(--rc-purple), 0 0 4px var(--rc-purple); }
-
-/* Bar styling */
-.racing-app .rc-bar {
-  height: 100%;
+/* ─── Status Chips ─── */
+.racing-app .rc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
   border-radius: 4px;
-  transition: height 0.06s linear;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: default;
+  text-decoration: none;
 }
 
-.racing-app .rc-bar-throttle {
-  background: linear-gradient(90deg, #004d29, var(--rc-green));
-  box-shadow: 0 0 10px rgba(0, 255, 135, 0.35);
+/* ─── Glow Text ─── */
+.racing-app .glow-green  { text-shadow: 0 0 18px var(--rc-green),  0 0 5px var(--rc-green); }
+.racing-app .glow-red    { text-shadow: 0 0 18px var(--rc-red),    0 0 5px var(--rc-red); }
+.racing-app .glow-cyan   { text-shadow: 0 0 18px var(--rc-cyan),   0 0 5px var(--rc-cyan); }
+.racing-app .glow-yellow { text-shadow: 0 0 18px var(--rc-yellow), 0 0 5px var(--rc-yellow); }
+.racing-app .glow-purple { text-shadow: 0 0 18px var(--rc-purple), 0 0 5px var(--rc-purple); }
+
+/* ─── Shift Lights Strip ─── */
+.racing-app .shift-strip {
+  display: flex;
+  gap: 2px;
+  padding: 3px 8px;
+  background: var(--rc-bg);
+  border-bottom: 1px solid var(--rc-border);
 }
 
-.racing-app .rc-bar-brake {
-  background: linear-gradient(90deg, #4d0015, var(--rc-red));
-  box-shadow: 0 0 10px rgba(255, 45, 85, 0.35);
+.racing-app .shift-seg {
+  flex: 1;
+  height: 5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.04s linear, box-shadow 0.04s linear;
 }
 
-.racing-app .rc-bar-clutch {
-  background: linear-gradient(90deg, #1a0044, var(--rc-purple));
-  box-shadow: 0 0 8px rgba(176, 102, 255, 0.3);
-}
+.racing-app .shift-seg.lit-green  { background: var(--rc-green);  box-shadow: 0 0 8px var(--rc-green); }
+.racing-app .shift-seg.lit-yellow { background: var(--rc-yellow); box-shadow: 0 0 8px var(--rc-yellow); }
+.racing-app .shift-seg.lit-red    { background: var(--rc-red);    box-shadow: 0 0 10px var(--rc-red); }
 
-/* RPM indicator */
-.racing-app .rpm-segment {
-  transition: opacity 0.04s linear;
-}
+/* ─── Pedal Bars ─── */
+.racing-app .rc-bar { height: 100%; border-radius: 3px; transition: height 0.06s linear; }
+.racing-app .rc-bar-throttle { background: linear-gradient(90deg, #003020, var(--rc-green));  box-shadow: 0 0 10px rgba(0, 232, 122, 0.4); }
+.racing-app .rc-bar-brake    { background: linear-gradient(90deg, #3d0011, var(--rc-red));    box-shadow: 0 0 10px rgba(255, 31, 68, 0.4); }
+.racing-app .rc-bar-clutch   { background: linear-gradient(90deg, #1a003e, var(--rc-purple)); box-shadow: 0 0 8px  rgba(179, 102, 255, 0.35); }
 
-/* Delta bar */
-.racing-app .delta-positive { background: var(--rc-red); box-shadow: 0 0 8px var(--rc-red); }
+/* ─── RPM Segments ─── */
+.racing-app .rpm-segment { transition: opacity 0.04s linear; }
+
+/* ─── Delta bar states ─── */
+.racing-app .delta-positive { background: var(--rc-red);   box-shadow: 0 0 8px var(--rc-red); }
 .racing-app .delta-negative { background: var(--rc-green); box-shadow: 0 0 8px var(--rc-green); }
 
-/* Pulse animation */
+/* ─── G-Force ─── */
+.racing-app .gforce-container { background: var(--rc-gforce-bg); border-radius: 50%; position: relative; }
+.racing-app .gforce-ring      { stroke: var(--rc-gforce-ring); }
+.racing-app .gforce-cross     { stroke: var(--rc-gforce-cross); }
+.racing-app .gforce-dot       { fill: var(--rc-cyan); filter: drop-shadow(0 0 5px var(--rc-cyan)); }
+.racing-app .gforce-trail     { fill: var(--rc-cyan); }
+
+/* ─── Tire Cells ─── */
+.racing-app .tire-cell {
+  border-radius: 6px;
+  padding: 8px;
+  position: relative;
+  overflow: hidden;
+  background: var(--rc-surface);
+}
+
+.racing-app .tire-cell::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+}
+
+.racing-app .tire-cell-lf::before,
+.racing-app .tire-cell-rf::before { background: var(--rc-z-cockpit); }
+.racing-app .tire-cell-lr::before,
+.racing-app .tire-cell-rr::before { background: var(--rc-z-mechanical); }
+
+/* ─── Animations ─── */
 @keyframes pulse-soft {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  50%       { opacity: 0.5; }
 }
-.racing-app .pulse { animation: pulse-soft 1.5s ease-in-out infinite; }
 
-/* Shift indicator blink */
 @keyframes blink-fast {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-.racing-app .blink { animation: blink-fast 0.2s linear infinite; }
-
-/* G-Force module - explicit contrasting background */
-.racing-app .gforce-container {
-  background: var(--rc-gforce-bg);
-  border-radius: 50%;
-  position: relative;
+  50%       { opacity: 0; }
 }
 
-.racing-app .gforce-ring {
-  stroke: var(--rc-gforce-ring);
+@keyframes shift-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.12; }
 }
 
-.racing-app .gforce-cross {
-  stroke: var(--rc-gforce-cross);
-}
+.racing-app .pulse       { animation: pulse-soft  1.5s ease-in-out infinite; }
+.racing-app .blink       { animation: blink-fast  0.25s linear infinite; }
+.racing-app .shift-blink { animation: shift-blink 0.15s linear infinite; }
 
-.racing-app .gforce-dot {
-  fill: var(--rc-cyan);
-  filter: drop-shadow(0 0 6px var(--rc-cyan));
-}
-
-.racing-app .gforce-trail {
-  fill: var(--rc-cyan);
-}
-
-/* Scrollbar for event panels */
-.racing-app ::-webkit-scrollbar { width: 4px; }
-.racing-app ::-webkit-scrollbar-track { background: transparent; }
-.racing-app ::-webkit-scrollbar-thumb { background: var(--rc-border); border-radius: 2px; }
+/* ─── Scrollbar ─── */
+.racing-app ::-webkit-scrollbar        { width: 3px; }
+.racing-app ::-webkit-scrollbar-track  { background: transparent; }
+.racing-app ::-webkit-scrollbar-thumb  { background: var(--rc-border-strong); border-radius: 2px; }
 
 /* ======================== */
-/* Light theme variant      */
+/* Light Theme              */
 /* ======================== */
 .racing-app.racing-light {
-  --rc-bg: #f5f6f8;
-  --rc-surface: #ffffff;
-  --rc-card: #ffffff;
-  --rc-card-hover: #f8f9fa;
-  --rc-border: #d4d8e0;
-  --rc-border-accent: #b8bfcf;
-  --rc-text: #1a1a2e;
-  --rc-text-dim: #5a6070;
-  --rc-text-muted: #8890a0;
-  --rc-green: #059669;
-  --rc-red: #dc2626;
-  --rc-cyan: #0284c7;
-  --rc-yellow: #d97706;
-  --rc-purple: #7c3aed;
-  --rc-orange: #ea580c;
-  --rc-blue: #2563eb;
-  --rc-gforce-bg: #e8eaf0;
-  --rc-gforce-ring: #c8ccd8;
-  --rc-gforce-cross: #b0b8c8;
+  --rc-bg:            #eff1f5;
+  --rc-surface:       #ffffff;
+  --rc-card:          #ffffff;
+  --rc-border:        rgba(0, 0, 0, 0.07);
+  --rc-border-strong: rgba(0, 0, 0, 0.14);
+  --rc-text:          #141420;
+  --rc-text-dim:      #58607a;
+  --rc-text-muted:    #909aaa;
+  --rc-green:         #059669;
+  --rc-red:           #dc2626;
+  --rc-cyan:          #0284c7;
+  --rc-yellow:        #d97706;
+  --rc-purple:        #7c3aed;
+  --rc-orange:        #ea580c;
+  --rc-z-cockpit:     #0284c7;
+  --rc-z-timing:      #7c3aed;
+  --rc-z-dynamics:    #d97706;
+  --rc-z-mechanical:  #ea580c;
+  --rc-z-strategy:    #059669;
+  --rc-gforce-bg:     #e8eaf2;
+  --rc-gforce-ring:   rgba(0, 0, 0, 0.09);
+  --rc-gforce-cross:  rgba(0, 0, 0, 0.05);
+
   background: var(--rc-bg);
   color: var(--rc-text);
 }
@@ -186,8 +228,14 @@
 .racing-app.racing-light .rc-card {
   background: var(--rc-card);
   border-color: var(--rc-border);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
+
+.racing-app.racing-light .rc-card-cockpit,
+.racing-app.racing-light .rc-card-timing,
+.racing-app.racing-light .rc-card-dynamics,
+.racing-app.racing-light .rc-card-mechanical,
+.racing-app.racing-light .rc-card-strategy { background: var(--rc-card); }
 
 .racing-app.racing-light .glow-green,
 .racing-app.racing-light .glow-red,
@@ -195,78 +243,43 @@
 .racing-app.racing-light .glow-yellow,
 .racing-app.racing-light .glow-purple { text-shadow: none; }
 
-.racing-app.racing-light .rc-bar-throttle { box-shadow: none; }
-.racing-app.racing-light .rc-bar-brake { box-shadow: none; }
+.racing-app.racing-light .rc-bar-throttle,
+.racing-app.racing-light .rc-bar-brake,
 .racing-app.racing-light .rc-bar-clutch { box-shadow: none; }
 
-/* Fix inline dark backgrounds in light theme */
+.racing-app.racing-light .shift-seg.lit-green,
+.racing-app.racing-light .shift-seg.lit-yellow,
+.racing-app.racing-light .shift-seg.lit-red { box-shadow: none; }
+
+.racing-app.racing-light .tire-cell { background: #f4f6fb; }
+
+/* Fix inline dark backgrounds in light mode */
 .racing-app.racing-light [style*="background: #0a0a0a"],
-.racing-app.racing-light [style*="background:#0a0a0a"] {
-  background: #e8eaf0 !important;
-}
-
+.racing-app.racing-light [style*="background:#0a0a0a"]   { background: #eef0f5 !important; }
 .racing-app.racing-light [style*="background: #111"],
-.racing-app.racing-light [style*="background:#111"] {
-  background: #e8eaf0 !important;
-}
-
+.racing-app.racing-light [style*="background:#111"]       { background: #eef0f5 !important; }
 .racing-app.racing-light [style*="background: #1a0008"],
-.racing-app.racing-light [style*="background:#1a0008"] {
-  background: #fee2e2 !important;
-}
-
+.racing-app.racing-light [style*="background:#1a0008"]   { background: #fee2e2 !important; }
 .racing-app.racing-light [style*="background: #001a33"],
-.racing-app.racing-light [style*="background:#001a33"] {
-  background: #dbeafe !important;
-}
-
+.racing-app.racing-light [style*="background:#001a33"]   { background: #dbeafe !important; }
 .racing-app.racing-light [style*="background: #001a22"],
-.racing-app.racing-light [style*="background:#001a22"] {
-  background: #e0f2fe !important;
-}
-
+.racing-app.racing-light [style*="background:#001a22"]   { background: #e0f2fe !important; }
 .racing-app.racing-light [style*="background: #1a1a00"],
-.racing-app.racing-light [style*="background:#1a1a00"] {
-  background: #fef3c7 !important;
-}
-
+.racing-app.racing-light [style*="background:#1a1a00"]   { background: #fef3c7 !important; }
 .racing-app.racing-light [style*="background: #332200"],
-.racing-app.racing-light [style*="background:#332200"] {
-  background: #fef3c7 !important;
-}
-
+.racing-app.racing-light [style*="background:#332200"]   { background: #fef3c7 !important; }
 .racing-app.racing-light [style*="background: #001a0d"],
-.racing-app.racing-light [style*="background:#001a0d"] {
-  background: #d1fae5 !important;
-}
-
+.racing-app.racing-light [style*="background:#001a0d"]   { background: #d1fae5 !important; }
 .racing-app.racing-light [style*="background: #1a1a1a"],
-.racing-app.racing-light [style*="background:#1a1a1a"] {
-  background: #e5e7eb !important;
-}
+.racing-app.racing-light [style*="background:#1a1a1a"]   { background: #e5e7eb !important; }
 
-/* RPM segments in light mode */
-.racing-app.racing-light .rpm-segment {
-  border: 0.5px solid #d0d0d0;
-}
+.racing-app.racing-light .rpm-segment { border: 0.5px solid #d0d4da; }
 
-/* Fix dark-only inline colors for text */
 .racing-app.racing-light [style*="color: #444"],
-.racing-app.racing-light [style*="color:#444"] {
-  color: #9ca3af !important;
-}
-
+.racing-app.racing-light [style*="color:#444"]  { color: #9ca3af !important; }
 .racing-app.racing-light [style*="color: #555"],
-.racing-app.racing-light [style*="color:#555"] {
-  color: #6b7280 !important;
-}
-
+.racing-app.racing-light [style*="color:#555"]  { color: #6b7280 !important; }
 .racing-app.racing-light [style*="color: #666"],
-.racing-app.racing-light [style*="color:#666"] {
-  color: #6b7280 !important;
-}
-
+.racing-app.racing-light [style*="color:#666"]  { color: #6b7280 !important; }
 .racing-app.racing-light [style*="color: #333"],
-.racing-app.racing-light [style*="color:#333"] {
-  color: #d1d5db !important;
-}
+.racing-app.racing-light [style*="color:#333"]  { color: #d1d5db !important; }

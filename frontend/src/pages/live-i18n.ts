@@ -50,6 +50,13 @@ export const liveTranslations = {
     analysis: 'Analysis',
     // Theme
     darkMode: 'Dark', lightMode: 'Light',
+    // Stint Pace
+    stintPace: 'Stint Pace', trendPer3L: 'Trend/3L', frontDegL: 'F.Deg/L',
+    trackInfo: 'Track Info', lapHistoryTitle: 'Lap History', lapLabel: 'L', deltaVsBest: 'Δ Best',
+    fuelUsed: 'Fuel/L',
+    // Tire status
+    tireColdStatus: 'COLD', tireOptStatus: 'OPTIMAL', tireHotStatus: 'HOT',
+    tireOptRange: 'Opt: 65°–105°C',
   },
   es: {
     // Sesión
@@ -98,6 +105,13 @@ export const liveTranslations = {
     analysis: 'Análisis',
     // Tema
     darkMode: 'Oscuro', lightMode: 'Claro',
+    // Ritmo
+    stintPace: 'Ritmo del Stint', trendPer3L: 'Tend./3V', frontDegL: 'Deg.D/V',
+    trackInfo: 'Info del Circuito', lapHistoryTitle: 'Historial de Vueltas', lapLabel: 'V', deltaVsBest: 'Δ Mejor',
+    fuelUsed: 'Comb./V',
+    // Estado neumáticos
+    tireColdStatus: 'FRÍO', tireOptStatus: 'ÓPTIMO', tireHotStatus: 'CALIENTE',
+    tireOptRange: 'Ópt: 65°–105°C',
   },
 };
 

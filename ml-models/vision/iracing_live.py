@@ -45,6 +45,14 @@ HTTP_PORT = 8766  # HTTP API for session data
 SAMPLE_RATE_HZ = 10
 LOG_EVERY_N_SAMPLES = 1  # Log every sample (10Hz). Set to 5 for 2Hz logging.
 
+# ── DynamoDB (opcional) ──────────────────────────────────────
+# Graba telemetría en DynamoDB para análisis con Bedrock.
+# Desactivar poniendo DYNAMO_ENABLED = False o sin credenciales AWS.
+DYNAMO_ENABLED     = True
+DYNAMO_TABLE       = os.environ.get('APEXVISION_DYNAMO_TABLE', 'apexvision-dev-metrics-realtime')
+DYNAMO_REGION      = os.environ.get('AWS_DEFAULT_REGION', 'us-east-1')
+DYNAMO_SAMPLE_HZ   = 2   # muestras/seg a guardar en DynamoDB (≤ SAMPLE_RATE_HZ)
+
 # ============================================================
 # GLOBALS
 # ============================================================
@@ -61,6 +69,12 @@ current_lap_data: list = []
 current_lap_num = 0
 session_info_saved = False
 sample_counter = 0
+
+# DynamoDB
+import uuid
+dynamo_table = None
+dynamo_session_id: str | None = None
+dynamo_sample_counter = 0
 
 
 # ============================================================
@@ -138,6 +152,7 @@ def save_lap_summary(lap_num: int, lap_data: list):
         with open(session_dir / "lap_summaries.json", "w", encoding="utf-8") as f:
             json.dump(lap_summaries, f, indent=2)
     print(f"  [LAP {lap_num}] {summary['lapTime']:.3f}s | Max: {summary['maxSpeed']:.0f} km/h | Fuel: -{summary['fuelUsed']:.1f}%")
+    return summary
 
 
 def save_session_info(data: dict):
@@ -178,6 +193,94 @@ def close_session_logging():
     # Upload to S3
     if session_dir and session_dir.exists():
         upload_to_s3(session_dir)
+
+
+# ============================================================
+# DYNAMODB — grabado de telemetría (opcional)
+# ============================================================
+def init_dynamo() -> bool:
+    """Inicializa DynamoDB. Retorna True si quedó listo."""
+    global dynamo_table, dynamo_session_id
+    if not DYNAMO_ENABLED:
+        return False
+    try:
+        import boto3
+    except ImportError:
+        print("[DDB] boto3 no instalado — DynamoDB deshabilitado.")
+        print("      Para habilitarlo: pip install boto3")
+        return False
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=DYNAMO_REGION)
+        dynamo_table = dynamodb.Table(DYNAMO_TABLE)
+        dynamo_session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        print(f"[DDB] DynamoDB habilitado — tabla: {DYNAMO_TABLE}")
+        print(f"[DDB] Session ID: {dynamo_session_id}")
+        return True
+    except Exception as e:
+        print(f"[DDB] No se pudo conectar: {e}")
+        return False
+
+
+def _dynamo_save_sample(data: dict):
+    """Escribe una muestra de telemetría en DynamoDB (bloqueante — correr en thread)."""
+    if not dynamo_table or not dynamo_session_id:
+        return
+    try:
+        from decimal import Decimal
+
+        def dec(v):
+            return Decimal(str(round(v, 4))) if isinstance(v, float) else v
+
+        # Campos livianos para DynamoDB (no enviar listas/dicts grandes)
+        fields = [
+            'speed', 'rpm', 'gear', 'throttle', 'brake', 'steering', 'lap',
+            'position', 'lapDistPct', 'lastLapTime', 'bestLapTime', 'currentLapTime',
+            'fuelPercent', 'fuelLevel', 'gLateral', 'gLongitudinal',
+            'tireLF_temp', 'tireRF_temp', 'tireLR_temp', 'tireRR_temp',
+            'tireLF_wear', 'tireRF_wear', 'tireLR_wear', 'tireRR_wear',
+            'oilTemp', 'waterTemp', 'handling', 'incidentCount',
+        ]
+        item = {
+            'PK': f'SESSION#{dynamo_session_id}',
+            'SK': f'LAP#{data.get("lap", 0):04d}#{int(time.time() * 1000)}',
+            'sessionId': dynamo_session_id,
+            'timestamp': int(time.time() * 1000),
+            'ttl': int(time.time()) + 86400 * 30,
+        }
+        for k in fields:
+            if k in data and data[k] is not None:
+                item[k] = dec(data[k]) if isinstance(data[k], (int, float)) else str(data[k])
+
+        dynamo_table.put_item(Item=item)
+    except Exception as e:
+        pass  # fallo silencioso — no interrumpir el loop principal
+
+
+def _dynamo_save_lap_summary(lap_num: int, summary: dict):
+    """Escribe el resumen de vuelta en DynamoDB (bloqueante — correr en thread)."""
+    if not dynamo_table or not dynamo_session_id:
+        return
+    try:
+        from decimal import Decimal
+
+        def dec(v):
+            return Decimal(str(round(v, 4))) if isinstance(v, float) else v
+
+        item = {
+            'PK': f'SESSION#{dynamo_session_id}',
+            'SK': f'LAPSUMMARY#{lap_num:04d}',
+            'sessionId': dynamo_session_id,
+            'lapNumber': lap_num,
+            'timestamp': int(time.time() * 1000),
+            'ttl': int(time.time()) + 86400 * 365,
+        }
+        for k, v in summary.items():
+            if v is not None:
+                item[k] = dec(v) if isinstance(v, float) else v
+        dynamo_table.put_item(Item=item)
+        print(f"  [DDB] Vuelta {lap_num} guardada en DynamoDB")
+    except Exception as e:
+        pass
 
 
 def upload_to_s3(local_dir: Path):
@@ -224,6 +327,7 @@ def safe_read():
                 ir_connected = False
                 return {"connected": False, "waiting": True, "timestamp": time.time()}
 
+        ir.freeze_var_buffer_latest()
         speed = ir['Speed']
         if speed is None:
             return {"connected": True, "waiting": True, "noData": True, "timestamp": time.time()}
@@ -248,7 +352,6 @@ def safe_read():
             "fuelLevel": round(float(ir['FuelLevel'] or 0), 2),
             "fuelPercent": round(float(ir['FuelLevelPct'] or 0) * 100, 1),
             "fuelUsePerHour": round(float(ir['FuelUsePerHour'] or 0), 2),
-            "fuelLevelLiters": round(float(ir['FuelLevel'] or 0), 2),
             "gLateral": round(float(ir['LatAccel'] or 0), 2),
             "gLongitudinal": round(float(ir['LongAccel'] or 0), 2),
             "trackTemp": round(float(ir['TrackTempCrew'] or 0), 1),
@@ -433,6 +536,56 @@ def safe_read():
         except Exception:
             pass
 
+        # Shift lights (car-specific optimal shift RPMs)
+        try:
+            data["slFirstRPM"] = round(float(ir.get('PlayerCarSLFirstRPM', 0) or 0))
+            data["slShiftRPM"] = round(float(ir.get('PlayerCarSLShiftRPM', 0) or 0))
+            data["slLastRPM"] = round(float(ir.get('PlayerCarSLLastRPM', 0) or 0))
+            data["slBlinkRPM"] = round(float(ir.get('PlayerCarSLBlinkRPM', 0) or 0))
+        except Exception:
+            pass
+
+        # DRS (0=unavailable, 1=deployable, 2=active)
+        try:
+            data["drsStatus"] = int(ir.get('DRS_Status', 0) or 0)
+        except Exception:
+            data["drsStatus"] = 0
+
+        # Car setup data
+        try:
+            bias = float(ir.get('dcBrakeBias', 0) or 0)
+            data["brakeBias"] = round(bias * 100, 1) if bias <= 1.0 else round(bias, 1)
+            data["tractionControl"] = round(float(ir.get('dcTractionControl', 0) or 0), 1)
+        except Exception:
+            pass
+
+        # Pit stop status and damage
+        try:
+            data["pitstopActive"] = bool(ir.get('PitstopActive', False) or False)
+            data["pitRepairLeft"] = round(float(ir.get('PitRepairLeft', 0) or 0), 1)
+            data["pitOptRepairLeft"] = round(float(ir.get('PitOptRepairLeft', 0) or 0), 1)
+        except Exception:
+            pass
+
+        # Session total laps (for fuel-to-finish calculation)
+        try:
+            data["sessionLapsTotal"] = int(ir.get('SessionLapsTotal', 0) or 0)
+            data["raceLaps"] = int(ir.get('RaceLaps', 0) or 0)
+        except Exception:
+            pass
+
+        # Engine — manifold pressure (turbo/boost indicator)
+        try:
+            data["manifoldPress"] = round(float(ir.get('ManifoldPress', 0) or 0), 2)
+        except Exception:
+            pass
+
+        # Weather — declared wet session
+        try:
+            data["weatherDeclaredWet"] = bool(ir.get('WeatherDeclaredWet', False) or False)
+        except Exception:
+            data["weatherDeclaredWet"] = False
+
         return data
 
     except Exception as e:
@@ -460,10 +613,11 @@ async def handler(ws):
 # MAIN BROADCAST + LOGGING LOOP
 # ============================================================
 async def broadcast():
-    global current_lap_num, current_lap_data, session_dir
+    global current_lap_num, current_lap_data, session_dir, dynamo_sample_counter
 
     print(f"[...] Loop iniciado ({SAMPLE_RATE_HZ} Hz) — broadcast + logging")
     off_track_cooldown = 0
+    dynamo_step = max(1, SAMPLE_RATE_HZ // DYNAMO_SAMPLE_HZ)  # cada N samples → guardar en DDB
 
     while True:
         try:
@@ -487,7 +641,11 @@ async def broadcast():
             if lap > 0 and lap != current_lap_num:
                 # Lap changed — save previous lap summary
                 if current_lap_num > 0 and current_lap_data:
-                    save_lap_summary(current_lap_num, current_lap_data)
+                    summary = save_lap_summary(current_lap_num, current_lap_data)
+                    # DynamoDB — resumen de vuelta en background
+                    if dynamo_table and summary:
+                        loop = asyncio.get_event_loop()
+                        loop.run_in_executor(None, _dynamo_save_lap_summary, current_lap_num, summary)
                 current_lap_num = lap
                 current_lap_data = []
 
@@ -505,6 +663,13 @@ async def broadcast():
 
             # --- Log telemetry to disk ---
             log_sample(data)
+
+            # --- DynamoDB — telemetría a DYNAMO_SAMPLE_HZ Hz ---
+            if dynamo_table and data.get('isOnTrack'):
+                dynamo_sample_counter += 1
+                if dynamo_sample_counter % dynamo_step == 0:
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(None, _dynamo_save_sample, data.copy())
 
             # --- Broadcast to WS clients ---
             if clients:
@@ -553,6 +718,63 @@ class SessionsAPIHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == '/api/tts':
+            self.handle_tts()
+        else:
+            self.send_error(404)
+
+    def handle_tts(self):
+        """Converts text to speech via Amazon Polly and returns MP3 bytes.
+        Uses whatever AWS credentials are configured in the environment (no keys stored here).
+        """
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length)
+            payload = json.loads(body)
+            text = payload.get('text', '').strip()[:600]
+            lang = payload.get('lang', 'es')
+        except Exception:
+            self.send_error(400, 'Invalid JSON body')
+            return
+
+        if not text:
+            self.send_error(400, 'Empty text')
+            return
+
+        try:
+            import boto3
+        except ImportError:
+            self.send_error(503, 'boto3 not installed — run: pip install boto3')
+            return
+
+        voice_id = 'Lucia' if lang == 'es' else 'Matthew'
+        language_code = 'es-ES' if lang == 'es' else 'en-US'
+
+        try:
+            polly = boto3.client('polly')
+            response = polly.synthesize_speech(
+                Text=text,
+                OutputFormat='mp3',
+                VoiceId=voice_id,
+                Engine='neural',
+                LanguageCode=language_code,
+            )
+            audio_bytes = response['AudioStream'].read()
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[TTS] Polly error: {error_msg}")
+            self.send_error(500, error_msg[:200])
+            return
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'audio/mpeg')
+        self.send_header('Content-Length', str(len(audio_bytes)))
+        self._send_cors()
+        self.end_headers()
+        self.wfile.write(audio_bytes)
+
     def do_OPTIONS(self):
         self.send_response(200)
         self._send_cors()
@@ -560,7 +782,7 @@ class SessionsAPIHandler(BaseHTTPRequestHandler):
 
     def _send_cors(self):
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
 
     def handle_list_sessions(self):
@@ -638,19 +860,24 @@ def start_http_server():
 async def main():
     ip = get_ip()
 
-    # Start HTTP API for session data
+    # Start HTTP API (sessions + TTS proxy)
     start_http_server()
 
+    # Init DynamoDB (optional — skip if boto3/credentials not available)
+    ddb_ok = init_dynamo()
+
     print("=" * 55)
-    print("  ApexVision AI — iRacing Telemetry Server v3")
-    print("  (Unified: Live + Recording + Sessions API)")
+    print("  ApexVision AI — iRacing Bridge (todo-en-uno)")
     print("=" * 55)
-    print(f"  WebSocket:  ws://{ip}:{WS_PORT}")
-    print(f"  Sessions:   http://{ip}:{HTTP_PORT}/api/sessions")
+    print(f"  WebSocket:  ws://{ip}:{WS_PORT}  ← dashboard")
+    print(f"  HTTP API:   http://{ip}:{HTTP_PORT}/api/")
+    print(f"    /sessions          → historial de sesiones")
+    print(f"    POST /tts          → Polly TTS (radio)")
     print(f"  Dashboard:  http://localhost:5173/live")
     print(f"  Analysis:   http://localhost:5173/analysis")
-    print(f"  Rate:       {SAMPLE_RATE_HZ} Hz")
-    print(f"  Recording:  ./sessions/")
+    print(f"  Rate:       {SAMPLE_RATE_HZ} Hz (DDB: {DYNAMO_SAMPLE_HZ} Hz)")
+    print(f"  Disco:      ./sessions/")
+    print(f"  DynamoDB:   {'✓ ' + DYNAMO_TABLE if ddb_ok else '✗ deshabilitado'}")
     print(f"  Esperando iRacing...")
     print("=" * 55)
 
@@ -660,7 +887,9 @@ async def main():
     finally:
         # Save last lap on exit
         if current_lap_num > 0 and current_lap_data:
-            save_lap_summary(current_lap_num, current_lap_data)
+            summary = save_lap_summary(current_lap_num, current_lap_data)
+            if dynamo_table and summary:
+                _dynamo_save_lap_summary(current_lap_num, summary)
         close_session_logging()
         print("\n[FIN] Sesión guardada.")
 

@@ -2,44 +2,54 @@
 
 ## Qué hace
 
-Lee telemetría en tiempo real de iRacing vía shared memory y la envía por WebSocket a cualquier dispositivo en tu red local.
+Lee telemetría en tiempo real de iRacing vía shared memory y la envía por WebSocket a cualquier dispositivo en tu red local. Graba cada sesión automáticamente en disco y la sube a S3 (opcional).
 
 ## Datos que captura
 
 | Categoría | Datos |
 |-----------|-------|
 | **Core** | Speed, RPM, Gear, Throttle%, Brake%, Clutch%, Steering angle |
-| **Lap** | Lap number, lap distance %, best/last/current lap time |
+| **Lap** | Lap number, lap distance %, best/last/current lap time, delta to best/optimal |
 | **Position** | Overall position, class position |
-| **Tires** | Temperatura y desgaste por neumático (LF, RF, LR, RR) |
-| **Fuel** | Nivel, porcentaje |
+| **Tires** | Temperatura (inner/mid/outer) y desgaste por neumático (LF, RF, LR, RR) |
+| **Fuel** | Nivel en litros, porcentaje, consumo L/h |
 | **G-Forces** | Lateral G, Longitudinal G |
-| **Session** | Session time, laps remaining, DRS status |
-| **Info** | Driver name, car name, track name |
+| **Handling** | Understeer/Oversteer indicator, ABS activo, yaw rate |
+| **Engine** | Oil temp/press, water temp, voltage, manifold pressure |
+| **Weather** | Air temp, track temp, wind speed/dir, humidity, skies |
+| **Shift Lights** | slFirstRPM, slShiftRPM, slBlinkRPM (específico del auto) |
+| **DRS** | Estado DRS (0=off, 1=available, 2=active) |
+| **Setup** | Brake bias, traction control setting |
+| **Pit/Damage** | Pit repair time, optimal repair time, pitstop active |
+| **Flags** | Green, yellow, red, blue, white, checkered |
+| **Session** | Laps remaining, session time, total laps, race laps |
+| **Info** | Driver name/iRating/license, car name/number/class, track name/config |
 
-## Instalación (en tu PC de iRacing)
+## Instalación (en tu PC de iRacing — Windows)
+
+> ⚠️ `iracing_live.py` usa Windows Shared Memory y debe correr en Windows, no en WSL.
 
 ```bash
-# 1. Instalar Python 3.10+ (si no lo tenés)
-# Descargar de https://python.org
+# 1. Instalar Python 3.10+ desde https://python.org
+#    (marcar "Add to PATH" en el installer)
 
 # 2. Instalar dependencias
 pip install pyirsdk websockets
 
-# 3. Ejecutar el bridge
-python iracing_bridge.py
+# Opcional — para grabar sesiones en S3:
+pip install boto3
 ```
 
 ## Uso
 
-1. **Abrí iRacing** y entrá a cualquier sesión (practice, race, etc.)
-2. **Ejecutá el bridge** en una terminal:
+1. **Abrí iRacing** y entrá a cualquier sesión (practice, qualifying, race)
+2. **Ejecutá el servidor** en una terminal de Windows (CMD o PowerShell):
    ```
-   python iracing_bridge.py
+   python iracing_live.py
    ```
 3. **Abrí el dashboard** en cualquier browser de tu red:
-   - Si es la misma PC: `http://localhost:8080`
-   - Desde otro dispositivo: `http://192.168.x.x:8080` (tu IP local)
+   - Misma PC: `http://localhost:3000/live`
+   - Otro dispositivo (tablet, segundo monitor): `http://TU_IP:3000/live`
 
 ## Conectar el Dashboard
 

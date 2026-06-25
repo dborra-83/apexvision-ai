@@ -12,6 +12,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useLangStore } from '../store/lang-store';
 import { listSessions, loadSession, SessionListItem } from '../utils/s3-sessions';
+import { fmtLapTime as fmt } from '../utils/format';
 
 interface SessionInfo {
   startTime: string;
@@ -59,13 +60,6 @@ interface LoadedSession {
   laps: LapSummary[];
   events: SessionEvent[];
 }
-
-const fmt = (t: number) => {
-  if (t <= 0) return '--:--.---';
-  const m = Math.floor(t / 60);
-  const s = t % 60;
-  return `${m}:${s.toFixed(3).padStart(6, '0')}`;
-};
 
 function AnalysisTranslations() {
   const lang = useLangStore((s) => s.lang);
