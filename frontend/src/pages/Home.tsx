@@ -69,7 +69,7 @@ export function Home() {
       </nav>
 
       {/* Hero */}
-      <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
+      <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center hero-gradient">
         <h1 className="text-4xl md:text-5xl font-black mb-4 tracking-tight">
           ApexVision <span style={{ color: 'var(--accent)' }}>AI</span>
         </h1>
@@ -79,7 +79,7 @@ export function Home() {
         {/* Action cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto">
           {/* Live */}
-          <div className="card p-6 text-left">
+          <div className="card card-hover p-6 text-left fade-in-up">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-9 h-9 rounded flex items-center justify-center" style={{ background: 'rgba(0,210,255,0.1)' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>
@@ -94,7 +94,7 @@ export function Home() {
           </div>
 
           {/* Analysis */}
-          <div className="card p-6 text-left">
+          <div className="card card-hover p-6 text-left fade-in-up">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-9 h-9 rounded flex items-center justify-center" style={{ background: 'rgba(155,89,240,0.1)' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9b59f0" strokeWidth="2" strokeLinecap="round"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-8"/></svg>

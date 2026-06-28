@@ -57,6 +57,7 @@
   border: 1px solid var(--rc-border);
   border-radius: 4px;
   padding: 10px 12px;
+  contain: layout style;
 }
 
 /* Zone-tinted cards — 1px top accent only */
@@ -141,6 +142,7 @@
   height: 100%;
   border-radius: 2px;
   transition: width 60ms linear;
+  will-change: transform, width;
 }
 
 .racing-app .rc-bar-throttle { background: var(--rc-green); }
@@ -154,8 +156,8 @@
 }
 
 /* ─── Delta ─── */
-.racing-app .delta-positive { background: var(--rc-red); }
-.racing-app .delta-negative { background: var(--rc-green); }
+.racing-app .delta-positive { background: var(--rc-red); will-change: transform; }
+.racing-app .delta-negative { background: var(--rc-green); will-change: transform; }
 
 /* ─── G-Force ─── */
 .racing-app .gforce-container { background: var(--rc-gforce-bg); border-radius: 50%; }

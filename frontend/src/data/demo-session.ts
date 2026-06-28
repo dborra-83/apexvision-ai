@@ -53,7 +53,8 @@ export const DEMO_EVENTS = [
 
 /**
  * Generates a continuous stream of demo telemetry data (for Live demo mode).
- * Returns a function that produces the next frame each time it's called.
+ * Simulates a realistic lap with proper timing — each "lap" takes ~60 seconds real time.
+ * Returns a function that produces the next frame each time it's called (at 10Hz = 100ms).
  */
 export function createDemoTelemetryStream() {
   let tick = 0;
@@ -63,7 +64,9 @@ export function createDemoTelemetryStream() {
 
   return function nextFrame(): Record<string, unknown> {
     tick++;
-    lapDistPct += 0.15 + Math.random() * 0.05;
+    // Advance ~1.5-2% per second (at 10Hz = 0.15-0.2% per tick)
+    // A full lap takes ~60-70 seconds of real time
+    lapDistPct += 0.15 + Math.sin(tick * 0.01) * 0.03;
     if (lapDistPct >= 100) {
       lapDistPct = 0;
       lap++;

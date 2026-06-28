@@ -750,6 +750,9 @@ export function Live() {
           {sessionName && (
             <span className="rc-chip" style={{ background: 'rgba(255,194,0,0.1)', color: 'var(--rc-yellow)' }}>{sessionName.toUpperCase()}</span>
           )}
+          {isDemo && (
+            <span className="demo-badge">DEMO</span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-mono" style={{ color: 'var(--rc-text-dim)' }}>
