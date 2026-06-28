@@ -478,11 +478,18 @@ export function Live() {
 
   // Demo telemetry stream
   const demoStreamRef = useRef<ReturnType<typeof createDemoTelemetryStream> | null>(null);
-  const [demoData, setDemoData] = useState<Record<string, unknown> | null>(null);
+  const [demoData, setDemoData] = useState<Record<string, unknown> | null>(() => {
+    if (isDemo) {
+      const stream = createDemoTelemetryStream();
+      return stream(); // Initialize with first frame immediately
+    }
+    return null;
+  });
 
   useEffect(() => {
     if (!isDemo) return;
-    demoStreamRef.current = createDemoTelemetryStream();
+    const stream = createDemoTelemetryStream();
+    demoStreamRef.current = stream;
     const interval = setInterval(() => {
       if (demoStreamRef.current) {
         setDemoData(demoStreamRef.current());
