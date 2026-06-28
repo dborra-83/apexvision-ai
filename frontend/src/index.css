@@ -47,7 +47,7 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -109,6 +109,17 @@ body {
 .theme-transition *::before,
 .theme-transition *::after {
   transition: background-color 0.3s ease, border-color 0.3s ease, color 0.15s ease !important;
+}
+
+/* ─── Typography ─── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+button, select, input, textarea {
+  font-family: 'Outfit', sans-serif;
 }
 
 /* Scrollbar */
