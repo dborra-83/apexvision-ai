@@ -7,9 +7,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { fmtLapTime } from '../utils/format';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useIRacingLive } from '../hooks/useIRacingLive';
+import { createDemoTelemetryStream } from '../data/demo-session';
 import { useLangStore } from '../store/lang-store';
 import { useThemeStore } from '../store/theme-store';
 import { useSessionLogStore, SessionEvent } from '../store/session-log-store';
@@ -468,10 +469,34 @@ export function Live() {
   const setLang = useLangStore((s) => s.setLang);
   const { events, addEvent, updateMaxSpeed, maxSpeedSession, lastProcessedLap, setLastProcessedLap, isOffTrackCooldown, setOffTrackCooldown, clearSession } = useSessionLogStore();
 
+  // Demo mode detection
+  const [searchParams] = useSearchParams();
+  const isDemo = searchParams.get('demo') === 'true';
+
   const [wsUrl, setWsUrl] = useState(localStorage.getItem('iracing_ws_url') || '');
-  const { data, connected, connect, disconnect } = useIRacingLive(wsUrl || undefined);
+  const { data: liveData, connected: liveConnected, connect, disconnect } = useIRacingLive(wsUrl || undefined);
+
+  // Demo telemetry stream
+  const demoStreamRef = useRef<ReturnType<typeof createDemoTelemetryStream> | null>(null);
+  const [demoData, setDemoData] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    if (!isDemo) return;
+    demoStreamRef.current = createDemoTelemetryStream();
+    const interval = setInterval(() => {
+      if (demoStreamRef.current) {
+        setDemoData(demoStreamRef.current());
+      }
+    }, 100); // 10Hz like real telemetry
+    return () => clearInterval(interval);
+  }, [isDemo]);
+
+  // Use demo data if in demo mode, otherwise real data
+  const data = isDemo ? (demoData as any) : liveData;
+  const connected = isDemo ? true : liveConnected;
+
   const gHistRef = useRef<{ x: number; y: number }[]>([]);
-  const [showDashboard, setShowDashboard] = useState(!!wsUrl);
+  const [showDashboard, setShowDashboard] = useState(!!wsUrl || isDemo);
   const [showEvents, setShowEvents] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('iracing_tts') !== 'false');
 

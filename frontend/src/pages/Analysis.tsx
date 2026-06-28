@@ -4,10 +4,11 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useLangStore } from '../store/lang-store';
 import { listSessions, loadSession, SessionListItem } from '../utils/s3-sessions';
 import { fmtLapTime as fmt } from '../utils/format';
+import { DEMO_SESSION_INFO, DEMO_LAP_SUMMARIES, DEMO_EVENTS } from '../data/demo-session';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -498,6 +499,10 @@ export function Analysis() {
   const t = useT(lang);
   const es = lang === 'es';
 
+  // Demo mode detection
+  const [searchParams] = useSearchParams();
+  const isDemo = searchParams.get('demo') === 'true';
+
   const [session, setSession] = useState<LoadedSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -507,12 +512,34 @@ export function Analysis() {
   const [selectedLapA, setSelectedLapA] = useState<number | null>(null);
   const [selectedLapB, setSelectedLapB] = useState<number | null>(null);
 
+  // Load demo data automatically if ?demo=true
   useEffect(() => {
+    if (isDemo && !session) {
+      setSession({
+        info: DEMO_SESSION_INFO as any,
+        laps: DEMO_LAP_SUMMARIES,
+        events: DEMO_EVENTS as any,
+      });
+    }
+  }, [isDemo, session]);
+
+  // Auto-load first available session from API/S3
+  useEffect(() => {
+    if (isDemo) { setS3Loading(false); return; }
     listSessions()
-      .then((s) => { setS3Sessions(s); setS3Error(false); })
+      .then((s) => {
+        setS3Sessions(s);
+        setS3Error(false);
+        // Auto-load the first session if available
+        if (s.length > 0 && !session) {
+          loadSession(s[0]).then((data) => {
+            if (data.info) setSession({ info: data.info, laps: data.laps, events: data.events });
+          }).catch(() => {});
+        }
+      })
       .catch(() => setS3Error(true))
       .finally(() => setS3Loading(false));
-  }, []);
+  }, [isDemo]);
 
   useEffect(() => {
     if (!session) return;
