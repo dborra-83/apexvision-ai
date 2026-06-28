@@ -11,51 +11,125 @@ import { useMemo } from 'react';
 // TRACK MAP LINEAR
 // ============================================================
 
+interface CarPosition {
+  idx: number;
+  pct: number;
+  pos: number;
+  isPlayer: boolean;
+}
+
+interface TrackEventMarker {
+  pct: number;   // 0-100 track position where it happened
+  type: 'off_track' | 'oversteer' | 'understeer' | 'warning' | 'best_lap' | 'ai_recommendation' | string;
+}
+
 interface TrackMapLinearProps {
-  lapDistPct: number; // 0-100
-  sector1End?: number; // % where S1 ends (default 33)
-  sector2End?: number; // % where S2 ends (default 66)
+  lapDistPct: number;
+  sector1End?: number;
+  sector2End?: number;
   isOffTrack?: boolean;
+  otherCars?: CarPosition[];
+  trackEvents?: TrackEventMarker[];
   labels: { s1: string; s2: string; s3: string; trackMap: string };
 }
 
-export function TrackMapLinear({ lapDistPct, sector1End = 33, sector2End = 66, isOffTrack, labels }: TrackMapLinearProps) {
+export function TrackMapLinear({ lapDistPct, sector1End = 33, sector2End = 66, isOffTrack, otherCars = [], trackEvents = [], labels }: TrackMapLinearProps) {
   const currentSector = lapDistPct < sector1End ? 1 : lapDistPct < sector2End ? 2 : 3;
   const sectorColors = ['var(--rc-cyan)', 'var(--rc-purple)', 'var(--rc-orange)'];
 
+  const rivals = otherCars.filter((c) => !c.isPlayer && c.pct > 0.1);
+
+  const eventColor = (type: string): string => {
+    if (type === 'off_track') return 'var(--rc-red)';
+    if (type === 'best_lap') return 'var(--rc-purple)';
+    if (type === 'oversteer' || type === 'understeer') return 'var(--rc-orange)';
+    return 'var(--rc-yellow)';
+  };
+
   return (
     <div>
-      <div className="rc-section-title mb-2" style={{ fontSize: '11px' }}>{labels.trackMap}</div>
-      {/* Linear track representation */}
-      <div className="relative h-6 rounded-full overflow-hidden" style={{ background: 'var(--rc-surface)' }}>
+      <div className="rc-section-title mb-1" style={{ fontSize: '11px' }}>
+        {labels.trackMap}
+        {rivals.length > 0 && (
+          <span className="ml-2 font-mono text-[9px]" style={{ color: 'var(--rc-text-muted)' }}>
+            · {rivals.length + 1} cars
+          </span>
+        )}
+      </div>
+      {/* Linear track bar */}
+      <div className="relative rounded-full overflow-hidden" style={{ background: 'var(--rc-surface)', height: '28px' }}>
         {/* Sector divisions */}
         <div className="absolute top-0 bottom-0 left-0" style={{ width: `${sector1End}%`, background: 'rgba(0,212,255,0.08)', borderRight: '1px solid var(--rc-border)' }} />
         <div className="absolute top-0 bottom-0" style={{ left: `${sector1End}%`, width: `${sector2End - sector1End}%`, background: 'rgba(176,102,255,0.08)', borderRight: '1px solid var(--rc-border)' }} />
         <div className="absolute top-0 bottom-0" style={{ left: `${sector2End}%`, right: 0, background: 'rgba(255,107,0,0.08)' }} />
 
-        {/* Position marker */}
+        {/* Event markers — triangles at the bottom of the bar */}
+        {trackEvents.map((ev, i) => (
+          <div
+            key={i}
+            className="absolute bottom-0"
+            title={ev.type}
+            style={{
+              left: `${Math.min(99, ev.pct)}%`,
+              transform: 'translateX(-50%)',
+              width: 0, height: 0,
+              borderLeft: '4px solid transparent',
+              borderRight: '4px solid transparent',
+              borderBottom: `6px solid ${eventColor(ev.type)}`,
+              opacity: 0.85,
+              zIndex: 5,
+            }}
+          />
+        ))}
+
+        {/* Rival cars — small yellow dots */}
+        {rivals.map((car) => (
+          <div
+            key={car.idx}
+            className="absolute top-1/2 -translate-y-1/2 rounded-full transition-all duration-200"
+            style={{
+              left: `${Math.min(99, car.pct)}%`,
+              width: '6px',
+              height: '6px',
+              background: 'var(--rc-yellow)',
+              opacity: 0.75,
+              transform: 'translateX(-50%) translateY(-50%)',
+            }}
+          />
+        ))}
+
+        {/* Player position marker */}
         <div
-          className="absolute top-0 bottom-0 w-1.5 rounded-full transition-all duration-100"
+          className="absolute top-0 bottom-0 rounded-full transition-all duration-100"
           style={{
             left: `${Math.min(99, lapDistPct)}%`,
+            width: '6px',
+            transform: 'translateX(-50%)',
             background: isOffTrack ? 'var(--rc-red)' : sectorColors[currentSector - 1],
-            boxShadow: `0 0 8px ${isOffTrack ? 'var(--rc-red)' : sectorColors[currentSector - 1]}`,
+            boxShadow: `0 0 10px ${isOffTrack ? 'var(--rc-red)' : sectorColors[currentSector - 1]}`,
+            zIndex: 10,
           }}
         />
 
         {/* Sector labels */}
         <div className="absolute inset-0 flex items-center pointer-events-none">
-          <span className="flex-1 text-center text-[10px] font-bold" style={{ color: 'var(--rc-cyan)', opacity: 0.6 }}>{labels.s1}</span>
-          <span className="flex-1 text-center text-[10px] font-bold" style={{ color: 'var(--rc-purple)', opacity: 0.6 }}>{labels.s2}</span>
-          <span className="flex-1 text-center text-[10px] font-bold" style={{ color: 'var(--rc-orange)', opacity: 0.6 }}>{labels.s3}</span>
+          <span className="flex-1 text-center text-[9px] font-bold" style={{ color: 'var(--rc-cyan)', opacity: 0.5 }}>{labels.s1}</span>
+          <span className="flex-1 text-center text-[9px] font-bold" style={{ color: 'var(--rc-purple)', opacity: 0.5 }}>{labels.s2}</span>
+          <span className="flex-1 text-center text-[9px] font-bold" style={{ color: 'var(--rc-orange)', opacity: 0.5 }}>{labels.s3}</span>
         </div>
       </div>
-      {/* Percentage */}
-      <div className="text-center mt-1 text-xs font-mono" style={{ color: 'var(--rc-text-dim)' }}>
-        {lapDistPct.toFixed(0)}%
-        <span className="ml-2 font-bold" style={{ color: sectorColors[currentSector - 1] }}>
+
+      {/* Info row */}
+      <div className="flex items-center justify-between mt-1 text-[10px] font-mono" style={{ color: 'var(--rc-text-dim)' }}>
+        <span>{lapDistPct.toFixed(0)}% <span className="font-bold" style={{ color: sectorColors[currentSector - 1] }}>
           {currentSector === 1 ? labels.s1 : currentSector === 2 ? labels.s2 : labels.s3}
-        </span>
+        </span></span>
+        {rivals.length > 0 && (
+          <span style={{ color: 'var(--rc-yellow)' }}>
+            ● <span style={{ color: 'var(--rc-text-muted)' }}>rival</span> &nbsp;
+            <span style={{ color: sectorColors[currentSector - 1] }}>●</span> <span style={{ color: 'var(--rc-text-muted)' }}>yo</span>
+          </span>
+        )}
       </div>
     </div>
   );

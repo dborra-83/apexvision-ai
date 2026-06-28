@@ -72,6 +72,7 @@ function generateRecommendations(
   const rpm = (d.rpm as number) || 0;
   const gear = (d.gear as number) || 0;
   const throttle = (d.throttle as number) || 0;
+  const brake = (d.brake as number) || 0;
   const speed = (d.speed as number) || 0;
   const flags = (d.flags as string[]) || [];
 
@@ -274,6 +275,74 @@ function generateRecommendations(
     recs.push({ id: 'end', type: 'strategy', priority: 2, message: es
       ? `🏁 ${lapsRemaining} ${t.lapsLeft} — exigir al máximo, gestionar incidentes`
       : `🏁 ${lapsRemaining} ${t.lapsLeft} — push to the limit, manage incident risk` });
+  }
+
+  // ── DESGASTE TRASERO > DELANTERO / REAR-HEAVY WEAR ──
+  const lf_w = (d.tireLF_wear as number) || 0;
+  const rf_w = (d.tireRF_wear as number) || 0;
+  const lr_w = (d.tireLR_wear as number) || 0;
+  const rr_w = (d.tireRR_wear as number) || 0;
+  const frontAvgWear = (lf_w + rf_w) / 2;
+  const rearAvgWear  = (lr_w + rr_w) / 2;
+  const wearAxisDiff = rearAvgWear - frontAvgWear;
+  if (wearAxisDiff > 15 && rearAvgWear > 25) {
+    recs.push({ id: 'rear-wear', type: 'strategy', priority: 3, message: es
+      ? `🛞 Traseros desgastan ${wearAxisDiff.toFixed(0)}% más que delanteros — suavizar salida del gas`
+      : `🛞 Rears ${wearAxisDiff.toFixed(0)}% more worn than fronts — ease throttle on exit` });
+  }
+
+  // ── ACELERACIÓN TEMPRANA CON SOBREVIRAJE / EARLY THROTTLE + OVERSTEER ──
+  const steerAngle = Math.abs((d.steering as number) || 0);
+  if (throttle > 65 && steerAngle > 35 && speed > 70 && handling === 'oversteer') {
+    recs.push({ id: 'early-throttle', type: 'tip', priority: 3, message: es
+      ? '⚡ Gas temprano con sobreviraje — esperar volante más recto antes de acelerar'
+      : '⚡ Early throttle causing oversteer — wait for straighter wheel before power' });
+  }
+
+  // ── G LATERAL ALTO / HIGH LATERAL G ──
+  const latG = Math.abs((d.gLateral as number) || 0);
+  if (latG > 3.5 && speed > 80) {
+    recs.push({ id: 'high-latg', type: 'tip', priority: 5, message: es
+      ? `📐 ${latG.toFixed(1)}g lateral — límite de adherencia, línea más suave`
+      : `📐 ${latG.toFixed(1)}g lateral — at grip limit, keep a smoother line` });
+  }
+
+  // ── CONSISTENCIA DE VUELTA / LAP CONSISTENCY ──
+  if (history.lapTimes.length >= 4) {
+    const ltMean = history.lapTimes.reduce((a, b) => a + b, 0) / history.lapTimes.length;
+    const ltStdDev = Math.sqrt(
+      history.lapTimes.reduce((s, lt) => s + (lt - ltMean) ** 2, 0) / history.lapTimes.length
+    );
+    if (ltStdDev > 1.5) {
+      recs.push({ id: 'inconsistent', type: 'strategy', priority: 4, message: es
+        ? `📊 Variación de vueltas ±${ltStdDev.toFixed(1)}s — misma línea y puntos de frenada cada vuelta`
+        : `📊 Lap variance ±${ltStdDev.toFixed(1)}s — same line and braking markers every lap` });
+    }
+  }
+
+  // ── DELTA AL LAP ÓPTIMO / DELTA TO OPTIMAL ──
+  const deltaOptimal = Math.abs((d.deltaToOptimal as number) || 0);
+  if (deltaOptimal > 2.5 && lap > 3 && delta > 2.0) {
+    recs.push({ id: 'delta-opt', type: 'strategy', priority: 5, message: es
+      ? `🎯 ${deltaOptimal.toFixed(1)}s del lap óptimo — revisar sectores, mejorar apexes`
+      : `🎯 ${deltaOptimal.toFixed(1)}s from optimal lap — review sectors, hit the apex` });
+  }
+
+  // ── PISTA MOJADA / WET TRACK ──
+  const trackStateStr = String((d.trackState as unknown) || '').toLowerCase();
+  const isWetTrack = trackStateStr.includes('wet') || Number(trackStateStr) >= 4;
+  if (isWetTrack) {
+    recs.push({ id: 'wet', type: 'warning', priority: 2, message: es
+      ? '🌧️ Pista mojada — reducir velocidad de entrada, evitar bordillos y marcas de pintura'
+      : '🌧️ Wet track — reduce entry speed, avoid kerbs and painted lines' });
+  }
+
+  // ── ABS ACTIVO / ABS TRIGGERING ──
+  const absActive = (d.absActive as boolean) || false;
+  if (absActive && speed > 80 && brake > 50) {
+    recs.push({ id: 'abs', type: 'tip', priority: 3, message: es
+      ? '🔴 ABS activo — frenar un metro antes con menos presión inicial'
+      : '🔴 ABS triggering — brake 1m earlier with less initial pressure' });
   }
 
   return recs.sort((a, b) => a.priority - b.priority).slice(0, 6);
@@ -667,15 +736,33 @@ export function Live() {
 
       {/* STATUS BAR */}
       <div className="flex items-center gap-2 px-3 py-1">
-        <div className="flex-1 h-6 rounded-md flex items-center px-3 relative" style={{ background: 'var(--rc-surface)', border: '1px solid var(--rc-border)' }}>
-          <div className="absolute left-1/2 top-0 bottom-0 w-px" style={{ background: 'var(--rc-border-strong)' }} />
-          <motion.div animate={{ left: `${Math.max(5, Math.min(95, 50 + delta * 20))}%` }} transition={{ duration: 0.06 }}
-            className="absolute top-1 bottom-1 w-2.5 rounded-sm"
-            style={{ background: delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)', boxShadow: `0 0 8px ${delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)'}` }} />
-          <span className="relative z-10 text-xs font-bold font-mono" style={{ color: delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)' }}>
-            {delta > 0 ? '+' : ''}{delta.toFixed(3)}
-          </span>
-          <span className="ml-auto relative z-10 text-[10px]" style={{ color: 'var(--rc-text-muted)' }}>{t.delta}</span>
+        <div className="flex-1 rounded-md relative overflow-hidden" style={{ background: 'var(--rc-surface)', border: '1px solid var(--rc-border)' }}>
+          {/* Delta track bar */}
+          <div className="h-5 flex items-center px-3 relative">
+            <div className="absolute left-1/2 top-0 bottom-0 w-px" style={{ background: 'var(--rc-border-strong)' }} />
+            <motion.div
+              animate={{ left: `${Math.max(4, Math.min(96, 50 + delta * 15))}%` }}
+              transition={{ duration: 0.06 }}
+              className="absolute top-0.5 bottom-0.5 w-3 rounded"
+              style={{
+                background: delta > 0 ? 'var(--rc-red)' : delta < 0 ? 'var(--rc-green)' : 'var(--rc-border-strong)',
+                boxShadow: delta !== 0 ? `0 0 10px ${delta > 0 ? 'var(--rc-red)' : 'var(--rc-green)'}` : 'none',
+              }}
+            />
+            <span className="relative z-10 text-xs font-bold font-mono" style={{ color: delta > 0 ? 'var(--rc-red)' : delta < 0 ? 'var(--rc-green)' : 'var(--rc-text-dim)' }}>
+              {delta !== 0 ? (delta > 0 ? '+' : '') + delta.toFixed(3) : '± ---'}
+            </span>
+            <span className="ml-auto relative z-10 flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--rc-text-muted)' }}>
+              {bestLapTime > 0 && <span className="font-mono" style={{ color: 'var(--rc-purple)' }}>{fmt(bestLapTime)}</span>}
+              <span>{t.delta}</span>
+            </span>
+          </div>
+          {/* Scale ticks */}
+          <div className="h-px flex" style={{ background: 'var(--rc-border)' }}>
+            {[-3,-2,-1,0,1,2,3].map(s => (
+              <div key={s} className="absolute bottom-0 w-px h-1" style={{ left: `${50 + s * 15}%`, background: s === 0 ? 'var(--rc-text-dim)' : 'var(--rc-border)' }} />
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="rc-chip font-bold" style={{ background: 'rgba(0,232,122,0.12)', color: 'var(--rc-green)', fontSize: '13px' }}>P{position}</span>
@@ -686,8 +773,9 @@ export function Live() {
         </div>
       </div>
 
-      {/* MAIN GRID: Cockpit(2) | Timing(4) | Performance(3) | Strategy(3) */}
-      <div className="flex-1 grid grid-cols-12 gap-2 px-2 pb-2 min-h-0 overflow-hidden">
+      {/* MAIN GRID — desktop: 12-col fixed; mobile: horizontal scroll */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="h-full grid gap-2 px-2 pb-2" style={{ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', minWidth: '900px', overflowX: 'auto' }}>
 
         {/* ─── ZONE A: COCKPIT ─── */}
         <div className="col-span-2 flex flex-col gap-2 overflow-hidden">
@@ -813,6 +901,11 @@ export function Live() {
             <TrackMapLinear
               lapDistPct={(d.lapDistPct as number) || 0}
               isOffTrack={(d.isOffTrack as boolean) || false}
+              otherCars={(d.carPositions as { idx: number; pct: number; pos: number; isPlayer: boolean }[]) || []}
+              trackEvents={events
+                .filter((e) => e.trackPct > 0 && ['off_track', 'oversteer', 'understeer', 'best_lap', 'ai_recommendation'].includes(e.type))
+                .slice(-40)
+                .map((e) => ({ pct: e.trackPct, type: e.type }))}
               labels={{ s1: t.s1, s2: t.s2, s3: t.s3, trackMap: t.trackMap }}
             />
             <SectorTimes
@@ -848,7 +941,7 @@ export function Live() {
                     <circle key={i}
                       cx={50 + Math.max(-40, Math.min(40, p.x * 12))}
                       cy={50 + Math.max(-40, Math.min(40, p.y * 12))}
-                      r="2" className="gforce-trail" opacity={0.12 + (i / gHistRef.current.length) * 0.5} />
+                      r="2.5" className="gforce-trail" opacity={0.30 + (i / gHistRef.current.length) * 0.65} />
                   ))}
                   <circle
                     cx={50 + Math.max(-40, Math.min(40, gLateral * 12))}
@@ -1147,7 +1240,8 @@ export function Live() {
             </div>
           )}
         </div>
-      </div>
+      </div>{/* end grid */}
+      </div>{/* end responsive wrapper */}
     </div>
   );
 }
