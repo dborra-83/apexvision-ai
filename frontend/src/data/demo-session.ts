@@ -52,80 +52,206 @@ export const DEMO_EVENTS = [
 ];
 
 /**
- * Generates a continuous stream of demo telemetry data (for Live demo mode).
- * Simulates a realistic lap with proper timing — each "lap" takes ~60 seconds real time.
- * Returns a function that produces the next frame each time it's called (at 10Hz = 100ms).
+ * Generates a realistic demo telemetry stream for the Live page.
+ * 
+ * Simulates a full lap at Le Mans (~3:50 = 230 seconds real time compressed to ~90 seconds).
+ * Uses smooth interpolation (no random jumps) to simulate proper driving physics:
+ * - Straights: smooth acceleration to top speed
+ * - Braking zones: sharp deceleration
+ * - Corners: reduced speed, high steering, lateral G
+ * - Exit: progressive throttle application
+ * 
+ * Called at 10Hz (every 100ms). One full lap takes ~90 seconds of real time.
  */
 export function createDemoTelemetryStream() {
   let tick = 0;
   let lap = 1;
-  let lapDistPct = 0;
   let bestLapTime = 228.102;
+  let lastLapTime = 230.5;
+  
+  // Smooth state (interpolated, not random)
+  let speed = 0;
+  let throttle = 0;
+  let brake = 0;
+  let steering = 0;
+  let rpm = 800;
+  let gear = 1;
+  let gLat = 0;
+  let gLon = 0;
+
+  // Le Mans track profile: 38 segments defining the character of each section
+  // Each segment: [type, length%] where type is 'S'=straight, 'B'=braking, 'C'=corner, 'E'=exit
+  const trackProfile = [
+    { start: 0, end: 8, type: 'S', topSpeed: 310, label: 'Start/Finish Straight' },
+    { start: 8, end: 11, type: 'B', label: 'Dunlop Braking' },
+    { start: 11, end: 15, type: 'C', speed: 95, steer: 40, label: 'Dunlop Chicane' },
+    { start: 15, end: 18, type: 'E', label: 'Dunlop Exit' },
+    { start: 18, end: 22, type: 'S', topSpeed: 270, label: 'Esses approach' },
+    { start: 22, end: 24, type: 'B', label: 'Esses Braking' },
+    { start: 24, end: 30, type: 'C', speed: 140, steer: 25, label: 'Esses' },
+    { start: 30, end: 33, type: 'E', label: 'Tertre Rouge approach' },
+    { start: 33, end: 35, type: 'B', label: 'Tertre Rouge Braking' },
+    { start: 35, end: 38, type: 'C', speed: 160, steer: 30, label: 'Tertre Rouge' },
+    { start: 38, end: 55, type: 'S', topSpeed: 340, label: 'Mulsanne Straight' },
+    { start: 55, end: 57, type: 'B', label: 'Mulsanne Chicane 1 Braking' },
+    { start: 57, end: 60, type: 'C', speed: 120, steer: 35, label: 'Mulsanne Chicane 1' },
+    { start: 60, end: 65, type: 'S', topSpeed: 320, label: 'Mulsanne Straight 2' },
+    { start: 65, end: 67, type: 'B', label: 'Mulsanne Chicane 2 Braking' },
+    { start: 67, end: 70, type: 'C', speed: 115, steer: 38, label: 'Mulsanne Chicane 2' },
+    { start: 70, end: 75, type: 'S', topSpeed: 310, label: 'Mulsanne End' },
+    { start: 75, end: 78, type: 'B', label: 'Indianapolis Braking' },
+    { start: 78, end: 82, type: 'C', speed: 80, steer: 55, label: 'Indianapolis' },
+    { start: 82, end: 84, type: 'E', label: 'Arnage approach' },
+    { start: 84, end: 86, type: 'B', label: 'Arnage Braking' },
+    { start: 86, end: 89, type: 'C', speed: 65, steer: 65, label: 'Arnage' },
+    { start: 89, end: 92, type: 'E', label: 'Porsche Curves approach' },
+    { start: 92, end: 97, type: 'C', speed: 200, steer: 20, label: 'Porsche Curves' },
+    { start: 97, end: 100, type: 'S', topSpeed: 280, label: 'Ford Chicane approach' },
+  ];
+
+  function getSegment(pct: number) {
+    return trackProfile.find(s => pct >= s.start && pct < s.end) || trackProfile[0];
+  }
+
+  // Smooth interpolation helper
+  function lerp(current: number, target: number, rate: number): number {
+    return current + (target - current) * rate;
+  }
 
   return function nextFrame(): Record<string, unknown> {
     tick++;
-    // Advance ~1.5-2% per second (at 10Hz = 0.15-0.2% per tick)
-    // A full lap takes ~60-70 seconds of real time
-    lapDistPct += 0.15 + Math.sin(tick * 0.01) * 0.03;
-    if (lapDistPct >= 100) {
-      lapDistPct = 0;
-      lap++;
+
+    // Advance track position: ~0.11% per tick at 10Hz = 1.1%/s → full lap in ~90 seconds
+    const lapDistPct = (tick * 0.11) % 100;
+    const newLap = Math.floor(tick * 0.11 / 100) + 1;
+    if (newLap > lap) {
+      lastLapTime = 228 + Math.sin(lap * 0.7) * 3;
+      if (lastLapTime < bestLapTime) bestLapTime = lastLapTime;
+      lap = newLap;
     }
 
-    const phase = (lapDistPct / 100) * Math.PI * 2;
-    const isCorner = Math.sin(phase * 3) > 0.3;
-    const isStraight = Math.cos(phase * 2) > 0.5;
+    const segment = getSegment(lapDistPct);
+    const smoothRate = 0.08; // How fast values change (lower = smoother)
+    const fastRate = 0.15;
 
-    const speed = isStraight ? 290 + Math.random() * 35 : 80 + Math.random() * 120;
-    const throttle = isStraight ? 95 + Math.random() * 5 : isCorner ? 30 + Math.random() * 40 : 70 + Math.random() * 20;
-    const brake = isCorner && Math.sin(phase * 6) > 0.7 ? 60 + Math.random() * 40 : 0;
-    const rpm = Math.round(speed * 22 + Math.random() * 500);
-    const gear = speed < 80 ? 2 : speed < 130 ? 3 : speed < 180 ? 4 : speed < 230 ? 5 : speed < 280 ? 6 : 7;
-    const steering = isCorner ? (Math.sin(phase * 4) * 45) : Math.sin(phase) * 5;
+    // Calculate targets based on segment type
+    let targetSpeed = 200;
+    let targetThrottle = 50;
+    let targetBrake = 0;
+    let targetSteering = 0;
+    let targetGLat = 0;
+    let targetGLon = 0;
+
+    switch (segment.type) {
+      case 'S': // Straight — full throttle, building speed
+        targetSpeed = segment.topSpeed || 300;
+        targetThrottle = 100;
+        targetBrake = 0;
+        targetSteering = Math.sin(tick * 0.02) * 2; // tiny corrections
+        targetGLat = Math.sin(tick * 0.03) * 0.2;
+        targetGLon = speed < targetSpeed * 0.9 ? 0.4 : 0.1;
+        break;
+      case 'B': // Braking — hard decel
+        targetSpeed = (segment as any).speed || 100;
+        targetThrottle = 0;
+        targetBrake = 85 + Math.sin(tick * 0.1) * 10;
+        targetSteering = Math.sin(tick * 0.05) * 5;
+        targetGLat = Math.sin(tick * 0.04) * 0.5;
+        targetGLon = -3.5;
+        break;
+      case 'C': // Corner — low speed, high steering, lateral G
+        targetSpeed = (segment as any).speed || 120;
+        targetThrottle = 20 + Math.sin(tick * 0.05) * 15;
+        targetBrake = speed > targetSpeed + 20 ? 30 : 0;
+        targetSteering = (segment as any).steer || 30;
+        targetSteering *= Math.sin(tick * 0.03) > 0 ? 1 : -0.3; // vary direction slightly
+        targetGLat = ((segment as any).steer || 30) / 20; // proportional to steering
+        targetGLon = -0.3;
+        break;
+      case 'E': // Exit — progressive throttle
+        targetSpeed = speed + 2; // accelerating
+        targetThrottle = 60 + (lapDistPct - segment.start) / (segment.end - segment.start) * 40;
+        targetBrake = 0;
+        targetSteering = steering * 0.7; // unwinding
+        targetGLat = gLat * 0.8;
+        targetGLon = 0.5;
+        break;
+    }
+
+    // Smooth interpolation — values change gradually, never jump
+    speed = lerp(speed, targetSpeed, smoothRate);
+    throttle = lerp(throttle, targetThrottle, fastRate);
+    brake = lerp(brake, targetBrake, fastRate);
+    steering = lerp(steering, targetSteering, smoothRate);
+    gLat = lerp(gLat, targetGLat, smoothRate);
+    gLon = lerp(gLon, targetGLon, smoothRate);
+
+    // Derived values
+    rpm = Math.round(speed * 22 + 800);
+    gear = speed < 60 ? 2 : speed < 110 ? 3 : speed < 160 ? 4 : speed < 220 ? 5 : speed < 280 ? 6 : 7;
 
     const fuelPercent = Math.max(10, 100 - lap * 3.5 - lapDistPct * 0.035);
-    const tireLF = 85 + Math.sin(phase * 2) * 15 + Math.random() * 5;
-    const tireRF = 87 + Math.cos(phase * 2) * 14 + Math.random() * 5;
-    const tireLR = 82 + Math.sin(phase * 1.5) * 12 + Math.random() * 4;
-    const tireRR = 84 + Math.cos(phase * 1.5) * 13 + Math.random() * 4;
+    const currentLapTime = lapDistPct * 2.3; // ~230s per lap
+    const delta = (Math.sin(lapDistPct * 0.05 + lap) * 0.8);
+
+    // Tire temps: warmer in corners, cooler on straights
+    const cornerHeat = segment.type === 'C' ? 8 : segment.type === 'B' ? 4 : 0;
+    const tireLF = 88 + cornerHeat + Math.sin(tick * 0.01) * 3;
+    const tireRF = 90 + cornerHeat + Math.cos(tick * 0.01) * 3;
+    const tireLR = 84 + cornerHeat * 0.7 + Math.sin(tick * 0.008) * 2;
+    const tireRR = 86 + cornerHeat * 0.7 + Math.cos(tick * 0.008) * 2;
 
     return {
       simulator: "demo",
       connected: true,
       timestamp: Date.now() / 1000,
       fieldAvailability: {},
-      speed: Math.round(speed * 10) / 10,
-      rpm, gear, throttle: Math.round(throttle), brake: Math.round(brake),
+      speed: Math.round(Math.max(0, speed) * 10) / 10,
+      rpm: Math.max(800, rpm),
+      gear,
+      throttle: Math.round(Math.max(0, Math.min(100, throttle))),
+      brake: Math.round(Math.max(0, Math.min(100, brake))),
       clutch: 0,
       steering: Math.round(steering * 10) / 10,
-      lap, lapDistPct: Math.round(lapDistPct * 10) / 10,
+      lap,
+      lapDistPct: Math.round(lapDistPct * 10) / 10,
       position: 3, classPosition: 2,
-      lastLapTime: 228 + Math.random() * 4,
-      bestLapTime, currentLapTime: lapDistPct * 2.28,
-      deltaToSessionBest: (Math.random() - 0.4) * 1.5,
+      lastLapTime,
+      bestLapTime,
+      currentLapTime: Math.round(currentLapTime * 100) / 100,
+      deltaToSessionBest: Math.round(delta * 1000) / 1000,
       sessionLapsRemaining: Math.max(0, 20 - lap),
-      fuelLevel: fuelPercent * 0.9, fuelPercent,
-      fuelUsePerHour: 38.5 + Math.random() * 2,
-      gLateral: isCorner ? (Math.sin(phase * 4) * 2.5) : Math.random() * 0.3,
-      gLongitudinal: brake > 50 ? -(1.5 + Math.random()) : throttle > 80 ? 0.5 + Math.random() * 0.3 : 0,
-      tireLF_temp: tireLF, tireRF_temp: tireRF, tireLR_temp: tireLR, tireRR_temp: tireRR,
-      tireLF_wear: Math.min(90, lap * 4 + Math.random() * 5),
-      tireRF_wear: Math.min(90, lap * 4.2 + Math.random() * 5),
-      tireLR_wear: Math.min(85, lap * 3.5 + Math.random() * 4),
-      tireRR_wear: Math.min(85, lap * 3.7 + Math.random() * 4),
+      fuelLevel: fuelPercent * 0.9,
+      fuelPercent: Math.round(fuelPercent * 10) / 10,
+      fuelUsePerHour: 38.5,
+      gLateral: Math.round(gLat * 100) / 100,
+      gLongitudinal: Math.round(gLon * 100) / 100,
+      tireLF_temp: Math.round(tireLF * 10) / 10,
+      tireRF_temp: Math.round(tireRF * 10) / 10,
+      tireLR_temp: Math.round(tireLR * 10) / 10,
+      tireRR_temp: Math.round(tireRR * 10) / 10,
+      tireLF_wear: Math.min(90, lap * 3 + lapDistPct * 0.02),
+      tireRF_wear: Math.min(90, lap * 3.2 + lapDistPct * 0.02),
+      tireLR_wear: Math.min(85, lap * 2.5 + lapDistPct * 0.015),
+      tireRR_wear: Math.min(85, lap * 2.7 + lapDistPct * 0.015),
       tireCompound: "Medium",
       trackTemp: 31, airTemp: 22, windSpeed: 8, humidity: 55,
       skies: "Partly Cloudy", trackState: "dry",
       flags: [], onPitRoad: false, isOnTrack: true, isOffTrack: false,
-      drs: isStraight && speed > 280, absActive: brake > 80,
+      drs: segment.type === 'S' && speed > 280,
+      absActive: brake > 70 && speed > 100,
       trackName: "Circuit des 24 Heures du Mans", trackConfig: "24h",
       sessionName: "Practice (DEMO)",
       driverName: "Demo Driver", driverIRating: 2350, driverLicense: "A 4.99",
       carName: "Mercedes AMG GT3 EVO", carClass: "GT3",
-      handling: isCorner && Math.random() > 0.7 ? "oversteer" : "neutral",
-      understeerIndicator: 0, incidentCount: 2, shiftIndicator: rpm > 7500 ? 85 : 40,
-      oilTemp: 92 + Math.random() * 5, oilPress: 4.2 + Math.random() * 0.3,
-      waterTemp: 85 + Math.random() * 4, voltage: 13.8,
+      handling: segment.type === 'C' && gLat > 1.5 ? "oversteer" : "neutral",
+      understeerIndicator: segment.type === 'C' ? gLat * 2 : 0,
+      incidentCount: 2,
+      shiftIndicator: rpm > 7500 ? Math.min(100, (rpm - 7500) / 10) : 0,
+      oilTemp: 92 + Math.sin(tick * 0.005) * 2,
+      oilPress: 4.2 + Math.sin(tick * 0.003) * 0.2,
+      waterTemp: 85 + Math.sin(tick * 0.004) * 2,
+      voltage: 13.8,
     };
   };
 }
