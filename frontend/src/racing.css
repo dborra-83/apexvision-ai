@@ -46,8 +46,8 @@
   font-family: 'Outfit', -apple-system, sans-serif;
   min-height: 100vh;
   overflow: hidden;
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: 14px;
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -56,7 +56,7 @@
   background: var(--rc-card);
   border: 1px solid var(--rc-border);
   border-radius: 4px;
-  padding: 10px 12px;
+  padding: 14px 16px;
   contain: layout style;
 }
 
@@ -78,23 +78,24 @@
 
 .racing-app .rc-label {
   font-family: 'Outfit', sans-serif;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   color: var(--rc-text-muted);
 }
 
 .racing-app .rc-section-title {
   font-family: 'Outfit', sans-serif;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   color: var(--rc-text-dim);
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-bottom: 8px;
 }
 
 /* ─── Chips / Badges ─── */
@@ -102,13 +103,25 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   letter-spacing: 0.02em;
 }
+
+/* ─── Value sizes ─── */
+.racing-app .rc-speed    { font-size: 72px; } /* Hero speed */
+.racing-app .rc-gear-num { font-size: 48px; } /* Gear indicator */
+.racing-app .rc-big-val  { font-size: 28px; } /* Prominent values (delta, position) */
+.racing-app .rc-med-val  { font-size: 18px; } /* Medium values (lap times, temps) */
+.racing-app .rc-data-val { font-size: 14px; } /* Standard data values */
+
+/* ─── Spacing helpers ─── */
+.racing-app .rc-gap-sm { gap: 6px; }
+.racing-app .rc-gap-md { gap: 10px; }
+.racing-app .rc-gap-lg { gap: 14px; }
 
 /* ─── No glow — just color intensity ─── */
 .racing-app .glow-green  { color: var(--rc-green); }
