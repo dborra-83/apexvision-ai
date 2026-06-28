@@ -312,3 +312,88 @@
 .racing-app.racing-light [style*="color:#666"]  { color: #6b7280 !important; }
 .racing-app.racing-light [style*="color: #333"],
 .racing-app.racing-light [style*="color:#333"]  { color: #d1d5db !important; }
+
+/* ═══════════════════════════════════════════════════════
+   FORCE LARGER SIZES (override Tailwind)
+   These target the actual rendered elements in Live.tsx
+   ═══════════════════════════════════════════════════════ */
+
+/* Speed value — make it dominate the screen */
+.racing-app .rc-value.text-6xl,
+.racing-app .rc-value.text-7xl {
+  font-size: 80px !important;
+  line-height: 0.85;
+}
+
+/* Gear indicator */
+.racing-app .rc-value.text-3xl,
+.racing-app .rc-value.text-4xl {
+  font-size: 52px !important;
+}
+
+/* All text-xs in racing-app → bump to 13px */
+.racing-app .text-xs {
+  font-size: 13px !important;
+}
+
+/* All text-sm in racing-app → bump to 15px */
+.racing-app .text-sm {
+  font-size: 15px !important;
+}
+
+/* All text-base → 16px */
+.racing-app .text-base {
+  font-size: 16px !important;
+}
+
+/* Timing values (font-mono inside rc-card) */
+.racing-app .rc-card .font-mono {
+  font-size: 16px;
+}
+
+/* Section titles */
+.racing-app .rc-section-title {
+  font-size: 12px !important;
+  margin-bottom: 10px;
+}
+
+/* Labels in cards */
+.racing-app .rc-label {
+  font-size: 11px !important;
+}
+
+/* Card internal padding */
+.racing-app .rc-card {
+  padding: 14px 16px !important;
+}
+
+/* Grid gaps — more breathing room */
+.racing-app .gap-2 {
+  gap: 10px !important;
+}
+
+.racing-app .gap-1\.5 {
+  gap: 8px !important;
+}
+
+/* Top bar bigger text */
+.racing-app > div:first-child .text-sm,
+.racing-app > .flex .text-sm {
+  font-size: 14px !important;
+}
+
+/* RPM bar taller */
+.racing-app .rpm-segment {
+  min-height: 6px;
+}
+
+/* Temp gauges bar height */
+.racing-app .h-2 {
+  height: 10px !important;
+}
+
+/* G-Force container bigger */
+.racing-app .gforce-container {
+  min-width: 90px;
+  min-height: 90px;
+}
