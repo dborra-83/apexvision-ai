@@ -74,3 +74,14 @@ video/
 *.mp4
 *.avi
 *.mkv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+Lib/
+Scripts/
+share/
+*.pyd
+*.dll
