@@ -1,8 +1,6 @@
 name: Deploy to Dev
 
 on:
-  push:
-    branches: [develop]
   workflow_dispatch:
 
 permissions:
@@ -13,42 +11,35 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: development
+    if: vars.DEPLOY_ENABLED == 'true'
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
           aws-region: us-east-1
 
-      - name: Configure CodeArtifact
+      - name: Install and Build Frontend
+        working-directory: frontend
         run: |
-          aws codeartifact login --tool npm --domain cloudhesive --domain-owner 952129677059 --repository design-system --region us-east-1 --namespace @cloudhesive || true
-
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm install --legacy-peer-deps
-
-      - name: Build Frontend
-        working-directory: frontend
-        run: npx vite build
+          npm install --legacy-peer-deps
+          npx vite build
         env:
           VITE_DEV_BYPASS_AUTH: "true"
           VITE_S3_BUCKET: apexvision-sessions-520754296204
           VITE_AWS_REGION: us-east-1
 
       - name: Deploy Frontend to S3
-        run: |
-          aws s3 sync frontend/dist s3://apexvision-dev-dashboard-${{ secrets.AWS_ACCOUNT_ID }} --delete
+        run: aws s3 sync frontend/dist s3://apexvision-dev-dashboard-${{ secrets.AWS_ACCOUNT_ID }} --delete
 
       - name: Invalidate CloudFront Cache
-        run: |
-          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DIST_ID_DEV }} --paths "/*" || true
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DIST_ID_DEV }} --paths "/*" || true
