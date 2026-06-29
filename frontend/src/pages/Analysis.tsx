@@ -752,8 +752,8 @@ export function Analysis() {
             <h2 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>{t.evolution}</h2>
             <div style={{ overflowX: 'auto' }}>
               <svg viewBox={`0 0 ${validLaps.length * 40 + 20} 170`}
-                style={{ width: '100%', minWidth: `${Math.min(validLaps.length * 40 + 20, 720)}px`, height: '150px' }}
-                preserveAspectRatio="none">
+                style={{ width: '100%', height: '160px' }}
+                preserveAspectRatio="xMidYMid meet">
                 {stats && (() => {
                   const times = validLaps.map((l) => l.lapTime);
                   const mn = Math.min(...times), mx = Math.max(...times);

@@ -431,7 +431,7 @@ function TempGauge({ value, max, label, icon, unit = '°C' }: { value: number; m
       <div className="flex-1">
         <div className="flex justify-between mb-1">
           <span className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>{label}</span>
-          <span className="text-xs font-mono font-bold" style={{ color }}>{value > 0 ? `${value}${unit}` : '--'}</span>
+          <span className="text-xs font-mono font-bold" style={{ color }}>{value > 0 ? `${Number(value.toFixed(1))}${unit}` : '--'}</span>
         </div>
         <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--rc-surface)' }}>
           <div className="h-full rounded-full transition-all duration-100" style={{ width: `${pct}%`, background: color }} />
@@ -1062,7 +1062,7 @@ export function Live() {
               ))}
               {events
                 .filter(e => e.type === 'ai_recommendation')
-                .slice(-15)
+                .slice(-20)
                 .reverse()
                 .map((evt) => (
                   <div key={evt.id} className="px-2 py-1 rounded text-xs leading-snug"
