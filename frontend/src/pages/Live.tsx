@@ -737,6 +737,10 @@ export function Live() {
       {/* HEADER */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b" style={{ borderColor: 'var(--rc-border)', background: 'var(--rc-surface)' }}>
         <div className="flex items-center gap-3 text-sm flex-wrap">
+          {/* Logos */}
+          <img src={theme === 'dark' ? '/logo-primary.png' : '/logo-primary-dark.png'} alt="AWS" style={{ height: '18px', objectFit: 'contain' }} />
+          <img src={theme === 'dark' ? '/logo-secondary.png' : '/logo-secondary-dark.png'} alt="CloudHesive" style={{ height: '16px', objectFit: 'contain' }} />
+          <span style={{ width: '1px', height: '16px', background: 'var(--rc-border)' }} />
           <span className="font-bold" style={{ color: 'var(--rc-cyan)', fontSize: '13px' }}>
             <IconDriver size={13} color="var(--rc-cyan)" /> {driverName}
           </span>
