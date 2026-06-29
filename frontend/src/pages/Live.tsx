@@ -735,12 +735,12 @@ export function Live() {
       <ShiftLightsStrip rpm={rpm} slFirstRPM={slFirstRPM} slLastRPM={slLastRPM} slBlinkRPM={slBlinkRPM} />
 
       {/* HEADER */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b" style={{ borderColor: 'var(--rc-border)', background: 'var(--rc-surface)' }}>
-        <div className="flex items-center gap-3 text-sm flex-wrap">
-          {/* Logos */}
-          <img src={theme === 'dark' ? '/logo-primary.png' : '/logo-primary-dark.png'} alt="AWS" style={{ height: '18px', objectFit: 'contain' }} />
-          <img src={theme === 'dark' ? '/logo-secondary.png' : '/logo-secondary-dark.png'} alt="CloudHesive" style={{ height: '16px', objectFit: 'contain' }} />
-          <span style={{ width: '1px', height: '16px', background: 'var(--rc-border)' }} />
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--rc-border)', background: 'var(--rc-surface)' }}>
+        <div className="flex items-center gap-4 text-sm flex-wrap">
+          {/* Logos — prominent for branding */}
+          <img src={theme === 'dark' ? '/logo-primary.png' : '/logo-primary-dark.png'} alt="AWS" style={{ height: '36px', objectFit: 'contain' }} />
+          <img src={theme === 'dark' ? '/logo-secondary.png' : '/logo-secondary-dark.png'} alt="CloudHesive" style={{ height: '32px', objectFit: 'contain' }} />
+          <span style={{ width: '1px', height: '28px', background: 'var(--rc-border)' }} />
           <span className="font-bold" style={{ color: 'var(--rc-cyan)', fontSize: '13px' }}>
             <IconDriver size={13} color="var(--rc-cyan)" /> {driverName}
           </span>

@@ -55,10 +55,10 @@ export function Home() {
       <nav className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-4">
           {/* Logo 1 — AWS (primary) */}
-          <img src={theme === 'dark' ? '/logo-primary.png' : '/logo-primary-dark.png'} alt="AWS" className="h-7 object-contain" />
+          <img src={theme === 'dark' ? '/logo-primary.png' : '/logo-primary-dark.png'} alt="AWS" className="h-9 object-contain" />
           <span className="font-bold text-lg tracking-tight">ApexVision AI</span>
           {/* Logo 2 — CloudHesive (secondary) */}
-          <img src={theme === 'dark' ? '/logo-secondary.png' : '/logo-secondary-dark.png'} alt="CloudHesive" className="h-6 object-contain ml-2 hidden md:block" />
+          <img src={theme === 'dark' ? '/logo-secondary.png' : '/logo-secondary-dark.png'} alt="CloudHesive" className="h-8 object-contain ml-2 hidden md:block" />
         </div>
         <div className="flex items-center gap-2">
           <Link to="/live" className="text-sm font-semibold px-3 py-1.5 rounded no-underline" style={{ color: 'var(--text-secondary)' }}>Live</Link>
