@@ -1069,6 +1069,72 @@ export function Live() {
               {skies && <div className="col-span-2 flex justify-between"><span style={{ color: 'var(--rc-text-muted)' }}>☁ {t.skies}</span><span className="font-mono capitalize">{skies}</span></div>}
             </div>
           </div>
+
+          {/* Pit Prediction + Session Stats (fills empty space) */}
+          <div className="rc-card rc-card-strategy">
+            <div className="rc-label mb-2" style={{ color: 'var(--rc-z-strategy)' }}>
+              🏁 {lang === 'es' ? 'ESTRATEGIA' : 'STRATEGY'}
+            </div>
+            <div className="space-y-2 text-xs">
+              {/* Pit prediction */}
+              <div className="flex justify-between items-center">
+                <span style={{ color: 'var(--rc-text-dim)' }}>{lang === 'es' ? 'Pit en' : 'Pit in'}</span>
+                <span className="font-mono font-bold" style={{ color: fuelLaps <= 3 ? 'var(--rc-red)' : fuelLaps <= 6 ? 'var(--rc-yellow)' : 'var(--rc-green)', fontSize: '18px' }}>
+                  {fuelLaps} {lang === 'es' ? 'v' : 'L'}
+                </span>
+              </div>
+              {/* Fuel to finish */}
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--rc-text-dim)' }}>{lang === 'es' ? 'Consumo/v' : 'Fuel/lap'}</span>
+                <span className="font-mono">{fuelPerLap.toFixed(1)}%</span>
+              </div>
+              {/* Tire wear max */}
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--rc-text-dim)' }}>{lang === 'es' ? 'Desgaste máx' : 'Max wear'}</span>
+                <span className="font-mono" style={{ color: Math.max(tireLF_wear, tireRF_wear, tireLR_wear, tireRR_wear) > 60 ? 'var(--rc-red)' : 'var(--rc-text)' }}>
+                  {Math.max(tireLF_wear, tireRF_wear, tireLR_wear, tireRR_wear).toFixed(0)}%
+                </span>
+              </div>
+              {/* Session progress */}
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--rc-text-dim)' }}>{lang === 'es' ? 'Restantes' : 'Remaining'}</span>
+                <span className="font-mono">{(d.sessionLapsRemaining as number) || '∞'} {lang === 'es' ? 'vueltas' : 'laps'}</span>
+              </div>
+              {/* Max speed session */}
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--rc-text-dim)' }}>{lang === 'es' ? 'Vel. máxima' : 'Top speed'}</span>
+                <span className="font-mono font-bold" style={{ color: 'var(--rc-cyan)' }}>{maxSpeedSession.toFixed(0)} km/h</span>
+              </div>
+              {/* Off-tracks count */}
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--rc-text-dim)' }}>{lang === 'es' ? 'Fuera de pista' : 'Off-tracks'}</span>
+                <span className="font-mono" style={{ color: events.filter(e => e.type === 'off_track').length > 0 ? 'var(--rc-orange)' : 'var(--rc-text-muted)' }}>
+                  {events.filter(e => e.type === 'off_track').length}×
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Track Info Card */}
+          {(() => {
+            const trackInfo = findTrackInfo(trackName);
+            if (!trackInfo) return null;
+            const tip = lang === 'es' ? trackInfo.tipEs : trackInfo.tipEn;
+            return (
+              <div className="rc-card">
+                <div className="rc-label mb-1.5" style={{ color: 'var(--rc-text-dim)' }}>
+                  <IconInfo size={12} color="var(--rc-text-dim)" /> {lang === 'es' ? 'CIRCUITO' : 'TRACK'}
+                </div>
+                <div className="text-xs" style={{ color: 'var(--rc-text-dim)' }}>
+                  <span className="font-bold" style={{ color: 'var(--rc-text)' }}>{trackInfo.name}</span>
+                  <span className="ml-1">· {trackInfo.turns} {lang === 'es' ? 'curvas' : 'turns'}</span>
+                </div>
+                <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--rc-text-muted)', borderLeft: '2px solid var(--rc-purple)', paddingLeft: '8px' }}>
+                  {tip}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* ─── ZONE D: STRATEGY ─── */}
