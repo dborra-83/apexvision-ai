@@ -1092,18 +1092,37 @@ export function Live() {
                 🎙 {lang === 'es' ? (ttsEnabled ? 'RADIO' : 'RADIO') : (ttsEnabled ? 'RADIO' : 'RADIO')}
               </button>
             </div>
-            {recommendations.length === 0 ? (
+            {recommendations.length === 0 && events.filter(e => e.type === 'ai_recommendation').length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
                 <span className="text-xs" style={{ color: 'var(--rc-text-muted)' }}>{t.analyzing}</span>
               </div>
             ) : (
               <div className="flex-1 space-y-1 overflow-y-auto">
+                {/* Current active recommendations */}
                 {recommendations.map((rec) => (
                   <div key={rec.id} className="px-2 py-1.5 rounded text-xs leading-snug"
-                    style={{ background: typeBg[rec.type], borderLeft: `2px solid ${typeColors[rec.type]}` }}>
+                    style={{ background: typeBg[rec.type], borderLeft: `3px solid ${typeColors[rec.type]}` }}>
                     {rec.message}
                   </div>
                 ))}
+                {/* Historical recommendations from event log */}
+                {recommendations.length === 0 && events.filter(e => e.type === 'ai_recommendation').length > 0 && (
+                  <div className="text-xs pt-1 pb-0.5" style={{ color: 'var(--rc-text-muted)', borderTop: '1px solid var(--rc-border)', marginTop: '4px' }}>
+                    {lang === 'es' ? 'Historial:' : 'History:'}
+                  </div>
+                )}
+                {events
+                  .filter(e => e.type === 'ai_recommendation')
+                  .slice(-8)
+                  .reverse()
+                  .map((evt) => (
+                    <div key={evt.id} className="px-2 py-1 rounded text-xs leading-snug opacity-70"
+                      style={{ background: 'var(--rc-surface)', borderLeft: '2px solid var(--rc-text-muted)' }}>
+                      <span style={{ color: 'var(--rc-text-dim)' }}>{evt.message}</span>
+                      <span className="ml-2 text-xs" style={{ color: 'var(--rc-text-muted)', fontSize: '10px' }}>L{evt.lap}</span>
+                    </div>
+                  ))
+                }
               </div>
             )}
           </div>
