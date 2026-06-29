@@ -34,6 +34,7 @@ from schema.serializer import to_json
 
 try:
     from websockets.server import serve
+    from websockets.client import connect as ws_connect
 except ImportError:
     print("ERROR: pip install websockets")
     sys.exit(1)
@@ -58,6 +59,10 @@ current_lap_data: list = []
 current_lap_num = 0
 session_info_saved = False
 sample_counter = 0
+
+# Gateway client state
+gateway_ws = None
+gateway_connected = False
 
 
 # ============================================================
@@ -238,7 +243,7 @@ async def ws_handler(ws):
         clients.discard(ws)
 
 
-async def broadcast(connector: BaseConnector):
+async def broadcast(connector: BaseConnector, driver_id: int = 0):
     global current_lap_num, current_lap_data, session_dir
 
     sim = connector.simulator_name
@@ -279,7 +284,7 @@ async def broadcast(connector: BaseConnector):
 
             log_sample(data)
 
-            # Broadcast
+            # Broadcast to local WS clients
             if clients:
                 msg = to_json(data)
                 dead = set()
@@ -289,6 +294,10 @@ async def broadcast(connector: BaseConnector):
                     except Exception:
                         dead.add(c)
                 clients.difference_update(dead)
+
+            # Forward to API Gateway (non-blocking)
+            if driver_id > 0 and gateway_connected:
+                await send_to_gateway(data, driver_id)
 
         except Exception as e:
             print(f"[ERR] {e}")
@@ -314,6 +323,78 @@ def auto_detect() -> BaseConnector | None:
 
 
 # ============================================================
+# GATEWAY WSS CLIENT (Phase 3 — Multi-Driver Architecture)
+# ============================================================
+async def gateway_client(gateway_url: str, driver_id: int, api_key: str, connector: BaseConnector):
+    """
+    Non-blocking WSS client that forwards telemetry to the API Gateway.
+    Reconnects with exponential backoff (1s → 30s cap) if connection drops.
+    Does NOT affect local WS broadcast — if this fails, local continues.
+    """
+    global gateway_ws, gateway_connected
+
+    backoff = 1.0
+    max_backoff = 30.0
+
+    # Build connection URL with query params
+    separator = '&' if '?' in gateway_url else '?'
+    connect_url = f"{gateway_url}{separator}apiKey={api_key}&driverId={driver_id}&clientType=simulator"
+
+    print(f"[GW] Gateway mode enabled — driver {driver_id}")
+    print(f"[GW] Target: {gateway_url}")
+
+    while True:
+        try:
+            async with ws_connect(connect_url, open_timeout=10, close_timeout=5) as ws:
+                gateway_ws = ws
+                gateway_connected = True
+                backoff = 1.0  # Reset backoff on successful connect
+                print(f"[GW] ✓ Connected to gateway (driver {driver_id})")
+
+                # Keep alive — read messages (pings/pongs handled by library)
+                async for msg in ws:
+                    # Gateway may send control messages; log but don't act
+                    try:
+                        parsed = json.loads(msg)
+                        if parsed.get("type") == "error":
+                            print(f"[GW] Server error: {parsed.get('message', msg)}")
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+        except asyncio.CancelledError:
+            print("[GW] Gateway client cancelled")
+            gateway_connected = False
+            gateway_ws = None
+            return
+        except Exception as e:
+            gateway_connected = False
+            gateway_ws = None
+            print(f"[GW] Connection lost: {e} — reconnecting in {backoff:.1f}s")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, max_backoff)
+
+
+async def send_to_gateway(data: dict, driver_id: int):
+    """Send a telemetry frame to the gateway if connected. Non-blocking, fire-and-forget."""
+    global gateway_ws, gateway_connected
+
+    if not gateway_connected or gateway_ws is None:
+        return
+
+    try:
+        payload = json.dumps({
+            "action": "telemetry",
+            "driverId": driver_id,
+            "data": data,
+        })
+        await gateway_ws.send(payload)
+    except Exception:
+        # Don't crash broadcast loop — gateway will reconnect on its own
+        gateway_connected = False
+        gateway_ws = None
+
+
+# ============================================================
 # MAIN
 # ============================================================
 def get_ip():
@@ -327,7 +408,7 @@ def get_ip():
         return "127.0.0.1"
 
 
-async def main(connector: BaseConnector):
+async def main(connector: BaseConnector, driver_id: int = 0, gateway_url: str = "", api_key: str = ""):
     ip = get_ip()
     sim = connector.simulator_name
 
@@ -344,11 +425,23 @@ async def main(connector: BaseConnector):
     print(f"  Dashboard:  http://localhost:5173/live")
     print(f"  Rate:       {SAMPLE_RATE_HZ} Hz")
     print(f"  Recording:  {SESSIONS_DIR}/")
+    if driver_id > 0:
+        print(f"  Driver ID:  {driver_id}")
+    if gateway_url:
+        print(f"  Gateway:    {gateway_url}")
     print("=" * 58)
 
     try:
         async with serve(ws_handler, "0.0.0.0", WS_PORT):
-            await broadcast(connector)
+            tasks = [asyncio.create_task(broadcast(connector, driver_id))]
+
+            # Start gateway client alongside broadcast if configured
+            if gateway_url and api_key and driver_id > 0:
+                tasks.append(asyncio.create_task(
+                    gateway_client(gateway_url, driver_id, api_key, connector)
+                ))
+
+            await asyncio.gather(*tasks)
     finally:
         if current_lap_num > 0 and current_lap_data:
             save_lap_summary(current_lap_num, current_lap_data)
@@ -363,6 +456,13 @@ if __name__ == "__main__":
                         help="Which simulator to connect to (default: iracing)")
     parser.add_argument("--auto-detect", action="store_true",
                         help="Try each connector in sequence, activate the first that connects")
+    # Phase 3: Multi-driver gateway mode
+    parser.add_argument("--driver", type=int, choices=[1, 2, 3, 4], default=0,
+                        help="Driver ID (1-4) for this PC in multi-driver mode")
+    parser.add_argument("--gateway", type=str, default="",
+                        help="WSS URL of the API Gateway (e.g. wss://xxx.execute-api.us-east-1.amazonaws.com/prod)")
+    parser.add_argument("--api-key", type=str, default="",
+                        help="Team API key for gateway authentication")
     args = parser.parse_args()
 
     connector = None
@@ -390,4 +490,15 @@ if __name__ == "__main__":
                 except ConnectionError:
                     continue
 
-    asyncio.run(main(connector))
+    # Validate gateway args
+    if args.gateway and not args.driver:
+        print("[WARN] --gateway requires --driver (1-4). Gateway mode disabled.")
+    if args.gateway and not args.api_key:
+        print("[WARN] --gateway requires --api-key. Gateway mode disabled.")
+
+    asyncio.run(main(
+        connector,
+        driver_id=args.driver,
+        gateway_url=args.gateway if args.driver and args.api_key else "",
+        api_key=args.api_key,
+    ))

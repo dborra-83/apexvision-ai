@@ -4,6 +4,7 @@ import { Home } from './pages/Home';
 import { Live } from './pages/Live';
 import { Login } from './pages/Login';
 import { Analysis } from './pages/Analysis';
+import { Team } from './pages/Team';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 function App() {
@@ -26,6 +27,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Analysis />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/team"
+            element={
+              <ProtectedRoute>
+                <Team />
               </ProtectedRoute>
             }
           />
