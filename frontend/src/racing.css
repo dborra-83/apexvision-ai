@@ -315,131 +315,137 @@
 
 /* ═══════════════════════════════════════════════════════
    FORCE LARGER SIZES (override Tailwind)
-   Target: ~60% larger than default Tailwind sizes
+   Uses CSS custom property --rc-scale for user-adjustable sizing.
+   Default scale: 0.75 (75% of max = 25% smaller than before)
+   User can adjust via settings panel: 0.5 (small) to 1.2 (extra large)
    ═══════════════════════════════════════════════════════ */
 
-/* Speed value — HERO dominant */
+.racing-app {
+  --rc-scale: 0.75;  /* default: 75% — adjustable via JS */
+}
+
+/* Speed value — HERO */
 .racing-app .rc-value.text-6xl,
 .racing-app .rc-value.text-7xl {
-  font-size: 96px !important;
+  font-size: calc(96px * var(--rc-scale)) !important;
   line-height: 0.85;
 }
 
 /* Gear indicator */
 .racing-app .rc-value.text-3xl,
 .racing-app .rc-value.text-4xl {
-  font-size: 64px !important;
+  font-size: calc(64px * var(--rc-scale)) !important;
 }
 
-/* All text-xs in racing-app → 16px (was 12px, +60%) */
+/* All text-xs → scaled */
 .racing-app .text-xs {
-  font-size: 16px !important;
+  font-size: calc(16px * var(--rc-scale)) !important;
   line-height: 1.4;
 }
 
-/* All text-sm → 18px (was 14px) */
+/* text-sm → scaled */
 .racing-app .text-sm {
-  font-size: 18px !important;
+  font-size: calc(18px * var(--rc-scale)) !important;
   line-height: 1.4;
 }
 
-/* All text-base → 20px */
+/* text-base → scaled */
 .racing-app .text-base {
-  font-size: 20px !important;
+  font-size: calc(20px * var(--rc-scale)) !important;
 }
 
-/* text-lg → 24px */
+/* text-lg → scaled */
 .racing-app .text-lg {
-  font-size: 24px !important;
+  font-size: calc(24px * var(--rc-scale)) !important;
 }
 
-/* text-xl → 28px */
+/* text-xl → scaled */
 .racing-app .text-xl {
-  font-size: 28px !important;
+  font-size: calc(28px * var(--rc-scale)) !important;
 }
 
-/* Timing/mono values inside cards */
+/* Mono values inside cards */
 .racing-app .rc-card .font-mono {
-  font-size: 20px !important;
+  font-size: calc(20px * var(--rc-scale)) !important;
 }
 
 /* Section titles */
 .racing-app .rc-section-title {
-  font-size: 14px !important;
-  margin-bottom: 12px;
+  font-size: calc(14px * var(--rc-scale)) !important;
+  margin-bottom: calc(12px * var(--rc-scale));
 }
 
 /* Labels */
 .racing-app .rc-label {
-  font-size: 13px !important;
+  font-size: calc(13px * var(--rc-scale)) !important;
 }
 
 /* Card padding */
 .racing-app .rc-card {
-  padding: 16px 18px !important;
+  padding: calc(16px * var(--rc-scale)) calc(18px * var(--rc-scale)) !important;
 }
 
 /* Grid gaps */
 .racing-app .gap-2 {
-  gap: 12px !important;
+  gap: calc(12px * var(--rc-scale)) !important;
 }
 
 .racing-app .gap-1\.5 {
-  gap: 10px !important;
+  gap: calc(10px * var(--rc-scale)) !important;
 }
 
 .racing-app .gap-3 {
-  gap: 14px !important;
+  gap: calc(14px * var(--rc-scale)) !important;
 }
 
 /* Top bar */
 .racing-app > div:first-child .text-sm,
 .racing-app > .flex .text-sm {
-  font-size: 16px !important;
+  font-size: calc(16px * var(--rc-scale)) !important;
 }
 
-/* RPM bar taller */
+/* RPM bar */
 .racing-app .rpm-segment {
-  min-height: 8px;
+  min-height: calc(8px * var(--rc-scale));
 }
 
-/* Pedal bar height */
+/* Pedal bars */
 .racing-app .h-4 {
-  height: 22px !important;
+  height: calc(22px * var(--rc-scale)) !important;
 }
 
 .racing-app .h-5 {
-  height: 24px !important;
+  height: calc(24px * var(--rc-scale)) !important;
 }
 
-/* Temp/fuel gauge bars */
+/* Gauge bars */
 .racing-app .h-2 {
-  height: 12px !important;
+  height: calc(12px * var(--rc-scale)) !important;
   border-radius: 6px !important;
 }
 
 .racing-app .h-1\.5 {
-  height: 10px !important;
+  height: calc(10px * var(--rc-scale)) !important;
   border-radius: 5px !important;
 }
 
-/* G-Force container */
+/* G-Force */
 .racing-app .gforce-container {
-  min-width: 100px;
-  min-height: 100px;
+  min-width: calc(100px * var(--rc-scale));
+  min-height: calc(100px * var(--rc-scale));
 }
 
-/* Chip badges */
+/* Chips */
 .racing-app .rc-chip {
-  font-size: 13px !important;
-  padding: 4px 10px !important;
+  font-size: calc(13px * var(--rc-scale)) !important;
+  padding: calc(4px * var(--rc-scale)) calc(10px * var(--rc-scale)) !important;
 }
 
-/* Shift lights strip */
+/* Shift lights */
 .racing-app .shift-strip {
-  padding: 4px 0;
+  padding: calc(4px * var(--rc-scale)) 0;
 }
 
 .racing-app .shift-seg {
-  height: 6px;
+  height: calc(6px * var(--rc-scale));
 }

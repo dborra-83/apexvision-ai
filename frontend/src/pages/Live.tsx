@@ -507,6 +507,7 @@ export function Live() {
   const [showDashboard, setShowDashboard] = useState(!!wsUrl || isDemo);
   const [showEvents, setShowEvents] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('iracing_tts') !== 'false');
+  const [uiScale, setUiScale] = useState(() => parseFloat(localStorage.getItem('iracing_ui_scale') || '0.75'));
 
   // Stint history for AI trend analysis
   const [stintHistory, setStintHistory] = useState<StintHistory>({ lapTimes: [], tireWear: [], fuelPerLap: [], fuelLevels: [] });
@@ -728,7 +729,7 @@ export function Live() {
   const typeBg: Record<string, string> = { warning: 'rgba(255,31,68,0.08)', tip: 'rgba(0,200,255,0.06)', strategy: 'rgba(255,194,0,0.06)' };
 
   return (
-    <div className={`racing-app h-screen flex flex-col overflow-hidden ${theme === 'light' ? 'racing-light' : ''}`}>
+    <div className={`racing-app h-screen flex flex-col overflow-hidden ${theme === 'light' ? 'racing-light' : ''}`} style={{ '--rc-scale': uiScale } as React.CSSProperties}>
 
       {/* SHIFT LIGHTS */}
       <ShiftLightsStrip rpm={rpm} slFirstRPM={slFirstRPM} slLastRPM={slLastRPM} slBlinkRPM={slBlinkRPM} />
@@ -762,6 +763,11 @@ export function Live() {
           <span className="text-xs font-mono" style={{ color: 'var(--rc-text-dim)' }}>MAX {maxSpeedSession.toFixed(0)} {t.kmh}</span>
           <button onClick={() => setLang(lang === 'es' ? 'en' : 'es')} className="rc-chip" style={{ background: 'var(--rc-card)', color: 'var(--rc-text-dim)' }}>{lang.toUpperCase()}</button>
           <button onClick={toggleTheme} className="rc-chip" style={{ background: 'var(--rc-card)', color: 'var(--rc-text-dim)' }}>{theme === 'dark' ? '☀' : '☽'}</button>
+          {/* UI Scale controls */}
+          <button onClick={() => { const s = Math.max(0.5, uiScale - 0.1); setUiScale(s); localStorage.setItem('iracing_ui_scale', String(s)); }}
+            className="rc-chip" style={{ background: 'var(--rc-card)', color: 'var(--rc-text-dim)' }}>A−</button>
+          <button onClick={() => { const s = Math.min(1.3, uiScale + 0.1); setUiScale(s); localStorage.setItem('iracing_ui_scale', String(s)); }}
+            className="rc-chip" style={{ background: 'var(--rc-card)', color: 'var(--rc-text-dim)' }}>A+</button>
           <button onClick={() => setShowEvents(!showEvents)} className="rc-chip" style={{ background: showEvents ? 'rgba(0,200,255,0.1)' : 'var(--rc-card)', color: showEvents ? 'var(--rc-cyan)' : 'var(--rc-text-dim)' }}>
             <IconLog size={13} color={showEvents ? 'var(--rc-cyan)' : 'var(--rc-text-dim)'} />
           </button>
