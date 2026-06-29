@@ -19,6 +19,7 @@ import { playAlertSound, unlockAudio } from '../utils/sound-alerts';
 import { speakRecommendation } from '../utils/tts';
 import { findTrackInfo } from '../data/track-info';
 import { TrackMapLinear, SectorTimes, InputTrace, InputSample, SectorTime } from '../components/LiveTelemetryPanels';
+import { TireVisual } from '../components/TireVisual';
 import { IconDriver, IconCar, IconTrack, IconFuel, IconEngine, IconTire, IconGForce, IconAI, IconClock, IconLog, IconInfo } from '../components/RacingIcons';
 import '../racing.css';
 
@@ -997,7 +998,7 @@ export function Live() {
             </div>
           </div>
 
-          {/* Tires */}
+          {/* Tires — Visual */}
           <div className="rc-card rc-card-mechanical">
             <div className="flex items-center justify-between mb-2">
               <span className="rc-section-title" style={{ color: 'var(--rc-z-mechanical)' }}>
@@ -1005,41 +1006,12 @@ export function Live() {
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded font-bold" style={{ background: 'var(--rc-surface)', color: 'var(--rc-text-dim)' }}>{tireCompound}</span>
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { pos: t.fl, temp: tireLF_temp, wear: tireLF_wear, cls: 'tire-cell-lf' },
-                { pos: t.fr, temp: tireRF_temp, wear: tireRF_wear, cls: 'tire-cell-rf' },
-                { pos: t.rl, temp: tireLR_temp, wear: tireLR_wear, cls: 'tire-cell-lr' },
-                { pos: t.rr, temp: tireRR_temp, wear: tireRR_wear, cls: 'tire-cell-rr' },
-              ].map(tire => {
-                const temp = tire.temp || 0;
-                const tColor = temp > 110 ? 'var(--rc-red)' : temp > 65 ? 'var(--rc-green)' : temp > 0 ? 'var(--rc-cyan)' : 'var(--rc-text-muted)';
-                const wearPct = tire.wear || 0;
-                const wColor = wearPct > 70 ? 'var(--rc-red)' : wearPct > 50 ? 'var(--rc-yellow)' : 'var(--rc-green)';
-                const tempStatus = temp <= 0 ? null : temp < 65 ? { label: t.tireColdStatus, color: 'var(--rc-cyan)' } : temp > 105 ? { label: t.tireHotStatus, color: 'var(--rc-red)' } : { label: t.tireOptStatus, color: 'var(--rc-green)' };
-                return (
-                  <div key={tire.pos} className={`tire-cell ${tire.cls}`}>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-bold" style={{ color: 'var(--rc-text-dim)' }}>{tire.pos}</span>
-                      <div className="flex items-center gap-1">
-                        {tempStatus && (
-                          <span className="text-[8px] font-bold px-1 rounded" style={{ background: `${tempStatus.color}22`, color: tempStatus.color }}>{tempStatus.label}</span>
-                        )}
-                        <span className="text-sm font-mono font-bold" style={{ color: tColor }}>{temp > 0 ? `${temp.toFixed(0)}°` : '--'}</span>
-                      </div>
-                    </div>
-                    <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--rc-border-strong)' }}>
-                      <div className="h-full rounded-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, wearPct)}%`, background: wColor }} />
-                    </div>
-                    <div className="text-[9px] mt-0.5 font-mono" style={{ color: 'var(--rc-text-muted)' }}>
-                      {wearPct > 0 ? `${wearPct.toFixed(0)}% ${t.wear}` : `0% ${t.wear}`}
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-4 gap-2 justify-items-center">
+              <TireVisual temp={tireLF_temp} wear={tireLF_wear} position={t.fl} size={40} />
+              <TireVisual temp={tireRF_temp} wear={tireRF_wear} position={t.fr} size={40} />
+              <TireVisual temp={tireLR_temp} wear={tireLR_wear} position={t.rl} size={40} />
+              <TireVisual temp={tireRR_temp} wear={tireRR_wear} position={t.rr} size={40} />
             </div>
-            <div className="text-[9px] mt-1 text-center" style={{ color: 'var(--rc-text-muted)' }}>{t.tireOptRange}</div>
           </div>
 
           {/* Fuel */}
@@ -1057,12 +1029,7 @@ export function Live() {
             </div>
           </div>
 
-        </div>
-
-        {/* ─── ZONE D: STRATEGY ─── */}
-        <div className="col-span-3 flex flex-col gap-2 overflow-hidden">
-
-          {/* AI Engineer — prominent top position */}
+          {/* AI Engineer — with persistent history + auto-scroll */}
           <div className="rc-card rc-card-strategy flex-1 overflow-hidden flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-2">
               <span className="rc-section-title" style={{ color: 'var(--rc-z-strategy)' }}>
@@ -1070,50 +1037,45 @@ export function Live() {
               </span>
               <button
                 onClick={() => { const next = !ttsEnabled; setTtsEnabled(next); localStorage.setItem('iracing_tts', String(next)); }}
-                title={ttsEnabled ? (lang === 'es' ? 'Radio encendida — clic para apagar' : 'Radio on — click to mute') : (lang === 'es' ? 'Radio apagada — clic para activar' : 'Radio off — click to enable')}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-all"
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold"
                 style={{
                   background: ttsEnabled ? 'rgba(0,200,255,0.15)' : 'var(--rc-surface)',
                   color: ttsEnabled ? 'var(--rc-cyan)' : 'var(--rc-text-muted)',
                   border: `1px solid ${ttsEnabled ? 'var(--rc-cyan)' : 'var(--rc-border)'}`,
                 }}>
-                🎙 {lang === 'es' ? (ttsEnabled ? 'RADIO' : 'RADIO') : (ttsEnabled ? 'RADIO' : 'RADIO')}
+                🎙 RADIO
               </button>
             </div>
-            {recommendations.length === 0 && events.filter(e => e.type === 'ai_recommendation').length === 0 ? (
-              <div className="flex-1 flex items-center justify-center">
-                <span className="text-xs" style={{ color: 'var(--rc-text-muted)' }}>{t.analyzing}</span>
-              </div>
-            ) : (
-              <div className="flex-1 space-y-1 overflow-y-auto">
-                {/* Current active recommendations */}
-                {recommendations.map((rec) => (
-                  <div key={rec.id} className="px-2 py-1.5 rounded text-xs leading-snug"
-                    style={{ background: typeBg[rec.type], borderLeft: `3px solid ${typeColors[rec.type]}` }}>
-                    {rec.message}
+            <div className="flex-1 space-y-1 overflow-y-auto" ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
+              {/* Always show: current recommendations + full history */}
+              {recommendations.map((rec) => (
+                <div key={rec.id} className="px-2 py-1.5 rounded text-xs leading-snug"
+                  style={{ background: typeBg[rec.type], borderLeft: `3px solid ${typeColors[rec.type]}` }}>
+                  {rec.message}
+                </div>
+              ))}
+              {events
+                .filter(e => e.type === 'ai_recommendation')
+                .slice(-15)
+                .reverse()
+                .map((evt) => (
+                  <div key={evt.id} className="px-2 py-1 rounded text-xs leading-snug"
+                    style={{ background: 'var(--rc-surface)', borderLeft: '2px solid var(--rc-text-muted)' }}>
+                    <span style={{ color: 'var(--rc-text-dim)' }}>{evt.message}</span>
+                    <span className="ml-2" style={{ color: 'var(--rc-text-muted)', fontSize: '10px' }}>L{evt.lap}</span>
                   </div>
-                ))}
-                {/* Historical recommendations from event log */}
-                {recommendations.length === 0 && events.filter(e => e.type === 'ai_recommendation').length > 0 && (
-                  <div className="text-xs pt-1 pb-0.5" style={{ color: 'var(--rc-text-muted)', borderTop: '1px solid var(--rc-border)', marginTop: '4px' }}>
-                    {lang === 'es' ? 'Historial:' : 'History:'}
-                  </div>
-                )}
-                {events
-                  .filter(e => e.type === 'ai_recommendation')
-                  .slice(-8)
-                  .reverse()
-                  .map((evt) => (
-                    <div key={evt.id} className="px-2 py-1 rounded text-xs leading-snug opacity-70"
-                      style={{ background: 'var(--rc-surface)', borderLeft: '2px solid var(--rc-text-muted)' }}>
-                      <span style={{ color: 'var(--rc-text-dim)' }}>{evt.message}</span>
-                      <span className="ml-2 text-xs" style={{ color: 'var(--rc-text-muted)', fontSize: '10px' }}>L{evt.lap}</span>
-                    </div>
-                  ))
-                }
-              </div>
-            )}
+                ))
+              }
+              {recommendations.length === 0 && events.filter(e => e.type === 'ai_recommendation').length === 0 && (
+                <div className="text-xs text-center py-2" style={{ color: 'var(--rc-text-muted)' }}>{t.analyzing}</div>
+              )}
+            </div>
           </div>
+
+        </div>
+
+        {/* ─── ZONE D: STRATEGY ─── */}
+        <div className="col-span-3 flex flex-col gap-2 overflow-hidden">
 
           {/* Stint Pace */}
           {stintHistory.lapTimes.length > 0 && (() => {
